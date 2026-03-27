@@ -1,8 +1,25 @@
-# duck-diagnostic
+<p align="center">
+  <img src="./public/logo.jpg" alt="gentleduck/diagnostic" width="200"/>
+</p>
 
-Generic diagnostic engine for Rust. Drop it into compilers, linters, SQL engines, config validators, whatever needs nice error output.
+<h1 align="center">gentleduck/diagnostic</h1>
+
+<p align="center">
+  Generic diagnostic engine for Rust. Drop it into compilers, linters, SQL engines, config validators, whatever needs nice error output.
+</p>
+
+<p align="center">
+  <a href="https://crates.io/crates/duck-diagnostic"><img src="https://img.shields.io/crates/v/duck-diagnostic.svg" alt="crates.io"></a>
+  <a href="https://docs.rs/duck-diagnostic"><img src="https://docs.rs/duck-diagnostic/badge.svg" alt="docs.rs"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/crates/l/duck-diagnostic.svg" alt="MIT"></a>
+</p>
 
 ## Quick start
+
+```toml
+[dependencies]
+duck-diagnostic = "0.1"
+```
 
 ```rust
 use duck_diagnostic::*;
@@ -114,12 +131,24 @@ Builder methods take `impl Into<String>`, so both `&str` and `String` work.
 let mut engine = DiagnosticEngine::<MyError>::new();
 
 engine.emit(diagnostic);
+engine.emit_errors(vec![...]);          // batch emit
+engine.emit_warnings(vec![...]);
+engine.extend(other_engine);           // merge two engines
+
 engine.has_errors();
+engine.has_warnings();
 engine.error_count();
 engine.warning_count();
+
 engine.print_all(source_code);          // colored terminal output
+engine.format_all(source_code);         // colored string (no print)
 engine.format_all_plain(source_code);   // plain text for logs/CI
+
 engine.get_diagnostics();               // &[Diagnostic<C>]
+engine.get_errors();                    // Vec<&Diagnostic<C>>
+engine.get_warnings();
+engine.len();
+engine.is_empty();
 engine.clear();
 ```
 
@@ -142,6 +171,14 @@ cargo run --example config_linter
 cargo run --example api_validator
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+
+## Security
+
+See [SECURITY.md](./SECURITY.md) for reporting vulnerabilities.
+
 ## License
 
-MIT
+[MIT](./LICENSE) - Copyright (c) 2024 @gentleduck
