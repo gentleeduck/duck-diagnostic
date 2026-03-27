@@ -2,12 +2,15 @@
 name = "duck-diagnostic"
 version = "0.1.0"
 edition = "2021"
-authors = ["wildduck"]
-description = "A generic, compiler-agnostic diagnostic engine for building rich error reporting into any tool — compilers, interpreters, linters, query engines, and more."
+authors = ["gentleduck"]
+description = "Generic diagnostic engine for building rich error reporting into any tool"
 license = "MIT"
 repository = "https://github.com/gentleduck/duck-diagnostic"
+homepage = "https://github.com/gentleduck/duck-diagnostic"
+documentation = "https://docs.rs/duck-diagnostic"
 keywords = ["diagnostic", "compiler", "error-reporting", "linter"]
 categories = ["development-tools", "compilers"]
+readme = "README.md"
 
 [dependencies]
 colored = "3"
