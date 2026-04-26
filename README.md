@@ -14,11 +14,26 @@
   <a href="./LICENSE"><img src="https://img.shields.io/crates/l/duck-diagnostic.svg" alt="MIT"></a>
 </p>
 
+## What's in 0.2
+
+- **Multi-file diagnostics** — labels in different files render as separate sections.
+- **Suggestions / fix-its** — `with_suggestion(Suggestion::new(span, replacement))` plus `Applicability` (auto-applicable / review / placeholders).
+- **`Severity::Bug`** — for ICEs; counted separately, distinct color.
+- **JSON output mode** — `engine.format_all_json()` (stable schema, opt-in via default `json` feature).
+- **`Span::from_zero_based(file, line, col, len)`** — drop-in for parsers that emit 0-based positions.
+- **`Label::with_note(s)`** — span-local note rendered under the caret.
+- **Tab + Unicode-width aware** — carets line up under emoji / CJK / tab-indented sources.
+- **`SourceCache`** — split source once, reuse across many diagnostics.
+- **`RenderOptions`** — tab width, context lines, max line width, color toggle.
+- **`diag!` macro** — short form `diag!(MyError::Foo, span, "msg")`.
+- **Long-line truncation** — `RenderOptions::max_line_width` clamps with ellipsis.
+- **Error code URLs** — `DiagnosticCode::url()` rendered after the code.
+
 ## Quick start
 
 ```toml
 [dependencies]
-duck-diagnostic = "0.1"
+duck-diagnostic = "0.2"
 ```
 
 ```rust
@@ -94,8 +109,11 @@ DiagnosticEngine<C>       collects diagnostics, tracks counts, renders output
 pub trait DiagnosticCode: fmt::Debug + Clone {
     fn code(&self) -> &str;
     fn severity(&self) -> Severity;
+    fn url(&self) -> Option<&'static str> { None }   // optional doc link
 }
 ```
+
+`Severity` variants: `Bug` (ICE), `Error`, `Warning`, `Note`, `Help`.
 
 ## API
 
@@ -162,13 +180,76 @@ engine.clear();
 
 **API validator** - missing fields, bad formats, deprecated endpoints: [`examples/api_validator.rs`](examples/api_validator.rs)
 
+**Suggestion / fix-it** - auto-applicable rewrites: [`examples/suggestion.rs`](examples/suggestion.rs)
+
+**Multi-file** - labels across two files: [`examples/multi_file.rs`](examples/multi_file.rs)
+
+**JSON output** - LSP/IDE-friendly: [`examples/json_output.rs`](examples/json_output.rs)
+
 **All at once**: `cargo run --example demo`
 
 ```sh
 cargo run --example compiler
-cargo run --example sql_engine
-cargo run --example config_linter
-cargo run --example api_validator
+cargo run --example suggestion
+cargo run --example json_output
+cargo run --example multi_file
+```
+
+## Advanced API
+
+### Render options
+
+```rust
+let opts = RenderOptions {
+    tab_width: 2,
+    context_lines: 2,
+    max_line_width: 120,
+    color: false,
+};
+let s = engine.format_all_with(source, opts);
+```
+
+### Source cache (reuse across diagnostics)
+
+```rust
+let cache = SourceCache::new(source);
+for d in engine.get_diagnostics() {
+    let f = DiagnosticFormatter::with_cache(d, &cache);
+    print!("{}", f.format());
+}
+```
+
+### `from_zero_based`
+
+```rust
+// Parser emits 0-based line+column? No problem.
+let span = Span::from_zero_based("a.rs", 0, 0, 1);
+assert_eq!(span.line, 1);
+assert_eq!(span.column, 1);
+```
+
+### Suggestions
+
+```rust
+Diagnostic::new(MyLint::PreferLet, "use `let`")
+    .with_suggestion(
+        Suggestion::new(span, "let")
+            .with_message("replace with `let`")
+            .with_applicability(Applicability::MachineApplicable),
+    );
+```
+
+### `diag!` macro
+
+```rust
+let d = diag!(MyError::Foo, span, "msg")
+    .with_help("try this");
+```
+
+### JSON
+
+```rust
+let json = engine.format_all_json();   // schema-stable, IDE-ready
 ```
 
 ## Contributing

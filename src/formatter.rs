@@ -1,20 +1,124 @@
 use colored::*;
+use unicode_width::UnicodeWidthStr;
 
-use crate::diagnostic::{Diagnostic, DiagnosticCode, LabelStyle, Severity};
+use crate::diagnostic::{Diagnostic, DiagnosticCode, Label, LabelStyle, Severity, Suggestion};
 
-pub struct DiagnosticFormatter<'a, C: DiagnosticCode> {
-  diagnostic: &'a Diagnostic<C>,
-  source_lines: Vec<String>,
+/// Pre-split source cache. Build once per source string, reuse for many diagnostics.
+#[derive(Debug, Clone)]
+pub struct SourceCache<'a> {
+  lines: Vec<&'a str>,
 }
 
-impl<'a, C: DiagnosticCode> DiagnosticFormatter<'a, C> {
-  pub fn new(diagnostic: &'a Diagnostic<C>, source_code: &str) -> Self {
-    let source_lines: Vec<String> = source_code.lines().map(|s| s.to_string()).collect();
-    Self { diagnostic, source_lines }
+impl<'a> SourceCache<'a> {
+  pub fn new(source: &'a str) -> Self {
+    Self { lines: source.lines().collect() }
+  }
+
+  pub fn line(&self, line_num_1based: usize) -> Option<&str> {
+    if line_num_1based == 0 {
+      return None;
+    }
+    self.lines.get(line_num_1based - 1).copied()
+  }
+
+  pub fn len(&self) -> usize {
+    self.lines.len()
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.lines.is_empty()
+  }
+}
+
+/// Owned variant — allocates a `Vec<String>` internally. Use this when you
+/// don't have a `&str` source to borrow (or for back-compat with v0.1).
+#[derive(Debug, Clone)]
+struct OwnedSource(Vec<String>);
+
+impl OwnedSource {
+  fn new(source: &str) -> Self {
+    Self(source.lines().map(String::from).collect())
+  }
+  fn line(&self, n: usize) -> Option<&str> {
+    if n == 0 {
+      None
+    } else {
+      self.0.get(n - 1).map(String::as_str)
+    }
+  }
+  fn len(&self) -> usize {
+    self.0.len()
+  }
+}
+
+enum CacheRef<'a, 'src> {
+  Borrowed(&'a SourceCache<'src>),
+  Owned(OwnedSource),
+}
+
+impl<'a, 'src> CacheRef<'a, 'src> {
+  fn line(&self, n: usize) -> Option<&str> {
+    match self {
+      Self::Borrowed(c) => c.line(n),
+      Self::Owned(o) => o.line(n),
+    }
+  }
+  fn len(&self) -> usize {
+    match self {
+      Self::Borrowed(c) => c.len(),
+      Self::Owned(o) => o.len(),
+    }
+  }
+}
+
+/// Tunables for rendered output.
+#[derive(Debug, Clone, Copy)]
+pub struct RenderOptions {
+  /// Tab stop width when expanding tabs in source lines.
+  pub tab_width: usize,
+  /// Number of context lines printed above + below each label region.
+  pub context_lines: usize,
+  /// Maximum rendered line width before truncation. `0` disables truncation.
+  pub max_line_width: usize,
+  /// Use ANSI color codes.
+  pub color: bool,
+}
+
+impl Default for RenderOptions {
+  fn default() -> Self {
+    Self { tab_width: 4, context_lines: 0, max_line_width: 0, color: true }
+  }
+}
+
+pub struct DiagnosticFormatter<'a, 'src, C: DiagnosticCode> {
+  diagnostic: &'a Diagnostic<C>,
+  cache: CacheRef<'a, 'src>,
+  options: RenderOptions,
+}
+
+impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
+  /// Construct from a raw source string. For repeated formatting against the
+  /// same source, build a [`SourceCache`] once and use [`DiagnosticFormatter::with_cache`].
+  pub fn new(diagnostic: &'a Diagnostic<C>, source: &str) -> Self {
+    Self {
+      diagnostic,
+      cache: CacheRef::Owned(OwnedSource::new(source)),
+      options: RenderOptions::default(),
+    }
+  }
+
+  pub fn with_cache(diagnostic: &'a Diagnostic<C>, cache: &'a SourceCache<'src>) -> Self {
+    Self { diagnostic, cache: CacheRef::Borrowed(cache), options: RenderOptions::default() }
+  }
+
+  pub fn with_options(mut self, options: RenderOptions) -> Self {
+    self.options = options;
+    self
   }
 
   fn severity_text(&self) -> &'static str {
     match self.diagnostic.severity {
+      Severity::Bug => "internal error",
       Severity::Error => "error",
       Severity::Warning => "warning",
       Severity::Note => "note",
@@ -29,151 +133,396 @@ impl<'a, C: DiagnosticCode> DiagnosticFormatter<'a, C> {
     }
   }
 
-  fn get_line_content(&self, line_num: usize) -> Option<&str> {
-    if line_num == 0 && self.source_lines.is_empty() {
-      return None;
+  /// Pretty (colored) format. Falls back to plain if `options.color = false`.
+  pub fn format(&self) -> String {
+    if self.options.color {
+      self.format_inner(true)
+    } else {
+      self.format_inner(false)
     }
-    let index = if line_num == 0 { 0 } else { line_num - 1 };
-    self.source_lines.get(index).map(|s| s.as_str())
   }
 
-  pub fn format(&self) -> String {
+  /// Plain (no color, deterministic) format. Suitable for CI logs.
+  pub fn format_plain(&self) -> String {
+    self.format_inner(false)
+  }
+
+  fn format_inner(&self, color: bool) -> String {
     let mut out = String::new();
-
-    let (sev, code_str) = (self.severity_text(), self.diagnostic.code.code());
-    let header = match self.diagnostic.severity {
-      Severity::Error => {
-        format!("{}: [{}]: {}", sev.red().bold(), code_str.red().bold(), self.diagnostic.message)
-      },
-      Severity::Warning => format!(
-        "{}: [{}]: {}",
-        sev.yellow().bold(),
-        code_str.yellow().bold(),
-        self.diagnostic.message
-      ),
-      _ => {
-        format!("{}: [{}]: {}", sev.cyan().bold(), code_str.cyan().bold(), self.diagnostic.message)
-      },
-    };
-    out.push_str(&header);
-    out.push('\n');
-
-    if let Some(primary) = self.diagnostic.labels.first() {
-      out.push_str(&format!(
-        "  {} {}:{}:{}\n",
-        "-->".blue().bold(),
-        primary.span.file.white().bold(),
-        primary.span.line.to_string().white().bold(),
-        primary.span.column.to_string().white().bold(),
-      ));
-
-      out.push_str(&format!("   {}\n", "|".blue().bold()));
-
-      if let Some(line_content) = self.get_line_content(primary.span.line) {
-        let line_num = primary.span.line;
-
-        out.push_str(&format!(
-          " {} {} {}\n",
-          format!("{}", line_num).blue().bold(),
-          "|".blue().bold(),
-          line_content,
-        ));
-
-        for label in &self.diagnostic.labels {
-          if label.span.line != line_num {
-            continue;
-          }
-          let ch = Self::underline_char(label.style);
-          let padding = " ".repeat(label.span.column);
-          let underline = ch.to_string().repeat(label.span.length);
-
-          let colored_ul = match (self.diagnostic.severity, label.style) {
-            (Severity::Error, LabelStyle::Primary) => underline.red().bold(),
-            (Severity::Warning, LabelStyle::Primary) => underline.yellow().bold(),
-            _ => underline.cyan().bold(),
-          };
-
-          if let Some(msg) = &label.message {
-            let colored_msg = match (self.diagnostic.severity, label.style) {
-              (Severity::Error, LabelStyle::Primary) => msg.red().bold(),
-              (Severity::Warning, LabelStyle::Primary) => msg.yellow().bold(),
-              _ => msg.cyan().bold(),
-            };
-            out.push_str(&format!(
-              "   {} {}{} {}\n",
-              "|".blue().bold(),
-              padding,
-              colored_ul,
-              colored_msg
-            ));
-          } else {
-            out.push_str(&format!("   {} {}{}\n", "|".blue().bold(), padding, colored_ul));
-          }
-        }
-      }
-
-      out.push_str(&format!("   {}\n", "|".blue().bold()));
-    }
-
-    for note in &self.diagnostic.notes {
-      out.push_str(&format!("   {} {}: {}\n", "=".blue().bold(), "note".cyan().bold(), note));
-    }
-    if let Some(help) = &self.diagnostic.help {
-      out.push_str(&format!("   {} {}: {}\n", "=".blue().bold(), "help".cyan().bold(), help));
-    }
-
+    self.write_header(&mut out, color);
+    self.write_labels_grouped(&mut out, color);
+    self.write_notes_help(&mut out, color);
+    self.write_suggestions(&mut out, color);
     out
   }
 
-  pub fn format_plain(&self) -> String {
-    let mut out = String::new();
+  fn write_header(&self, out: &mut String, color: bool) {
+    let sev = self.severity_text();
+    let code_str = self.diagnostic.code.code();
+    let url = self.diagnostic.code.url();
+
+    if color {
+      let (sev_c, code_c) = match self.diagnostic.severity {
+        Severity::Bug | Severity::Error => (sev.red().bold(), code_str.red().bold()),
+        Severity::Warning => (sev.yellow().bold(), code_str.yellow().bold()),
+        _ => (sev.cyan().bold(), code_str.cyan().bold()),
+      };
+      out.push_str(&format!("{}: [{}]: {}", sev_c, code_c, self.diagnostic.message));
+    } else {
+      out.push_str(&format!("{}: [{}]: {}", sev, code_str, self.diagnostic.message));
+    }
+
+    if let Some(u) = url {
+      if color {
+        out.push_str(&format!(" {}", format!("(see {u})").blue().italic()));
+      } else {
+        out.push_str(&format!(" (see {u})"));
+      }
+    }
+    out.push('\n');
+  }
+
+  fn write_labels_grouped(&self, out: &mut String, color: bool) {
+    let labels = &self.diagnostic.labels;
+    if labels.is_empty() {
+      return;
+    }
+
+    // Group by file so multi-file diagnostics render as separate sections.
+    let mut files: Vec<&str> = Vec::new();
+    for l in labels {
+      if !files.iter().any(|f| *f == l.span.file.as_str()) {
+        files.push(l.span.file.as_str());
+      }
+    }
+
+    for (idx, file) in files.iter().enumerate() {
+      let in_file: Vec<&Label> = labels.iter().filter(|l| l.span.file.as_str() == *file).collect();
+      let primary_in_file = in_file
+        .iter()
+        .find(|l| l.style == LabelStyle::Primary)
+        .copied()
+        .or(in_file.first().copied());
+      let primary = match primary_in_file {
+        Some(l) => l,
+        None => continue,
+      };
+
+      // File header
+      let header_line = format!(
+        "  {} {}:{}:{}",
+        if color { "-->".blue().bold().to_string() } else { "-->".to_string() },
+        if color {
+          primary.span.file.white().bold().to_string()
+        } else {
+          primary.span.file.clone()
+        },
+        if color {
+          primary.span.line.to_string().white().bold().to_string()
+        } else {
+          primary.span.line.to_string()
+        },
+        if color {
+          primary.span.column.to_string().white().bold().to_string()
+        } else {
+          primary.span.column.to_string()
+        },
+      );
+      out.push_str(&header_line);
+      out.push('\n');
+
+      self.write_file_section(out, &in_file, color);
+
+      if idx + 1 < files.len() {
+        out.push('\n');
+      }
+    }
+  }
+
+  fn write_file_section(&self, out: &mut String, labels: &[&Label], color: bool) {
+    // Determine line range to render: min..=max of all labels in this file,
+    // padded by context_lines.
+    let min_line = labels.iter().map(|l| l.span.line).min().unwrap_or(0);
+    let max_line = labels.iter().map(|l| l.span.line).max().unwrap_or(0);
+    if min_line == 0 {
+      // synthetic span — nothing to render
+      return;
+    }
+
+    let start = min_line.saturating_sub(self.options.context_lines).max(1);
+    let end = (max_line + self.options.context_lines).min(self.cache.len());
+
+    let gutter_w = end.to_string().len().max(2);
+    let bar = if color { "|".blue().bold().to_string() } else { "|".to_string() };
+
+    let blank_gutter = " ".repeat(gutter_w);
+    out.push_str(&format!("  {} {}\n", blank_gutter, bar));
+
+    for line_num in start..=end {
+      let raw = self.cache.line(line_num).unwrap_or("");
+      let expanded = expand_tabs(raw, self.options.tab_width);
+      let truncated = truncate_line(&expanded, self.options.max_line_width);
+      let line_label = format!("{:>w$}", line_num, w = gutter_w);
+      let line_label_c =
+        if color { line_label.blue().bold().to_string() } else { line_label.clone() };
+      out.push_str(&format!("  {} {} {}\n", line_label_c, bar, truncated));
+
+      // labels that touch this line
+      for label in labels {
+        if !label_touches(label, line_num) {
+          continue;
+        }
+        self.write_caret_line(out, label, line_num, raw, gutter_w, color);
+      }
+    }
+
+    out.push_str(&format!("  {} {}\n", blank_gutter, bar));
+  }
+
+  fn write_caret_line(
+    &self,
+    out: &mut String,
+    label: &Label,
+    line_num: usize,
+    raw_line: &str,
+    gutter_w: usize,
+    color: bool,
+  ) {
+    // Column range on this specific line (clamps to line bounds for multi-line labels).
+    let (col_start_1based, col_end_1based) = label_columns_on_line(label, line_num, raw_line);
+    let display_pad = display_width_prefix(raw_line, col_start_1based - 1, self.options.tab_width);
+    let display_len = display_width_range(
+      raw_line,
+      col_start_1based - 1,
+      col_end_1based - 1,
+      self.options.tab_width,
+    )
+    .max(1);
+
+    let ch = Self::underline_char(label.style);
+    let underline_str: String = std::iter::repeat(ch).take(display_len).collect();
+    let underline = if color {
+      match (self.diagnostic.severity, label.style) {
+        (Severity::Bug | Severity::Error, LabelStyle::Primary) => {
+          underline_str.red().bold().to_string()
+        },
+        (Severity::Warning, LabelStyle::Primary) => underline_str.yellow().bold().to_string(),
+        _ => underline_str.cyan().bold().to_string(),
+      }
+    } else {
+      underline_str
+    };
+
+    let bar = if color { "|".blue().bold().to_string() } else { "|".to_string() };
+    let blank_gutter = " ".repeat(gutter_w);
+
+    let msg_part = label
+      .message
+      .as_ref()
+      .map(|m| {
+        if color {
+          let colored = match (self.diagnostic.severity, label.style) {
+            (Severity::Bug | Severity::Error, LabelStyle::Primary) => m.red().bold().to_string(),
+            (Severity::Warning, LabelStyle::Primary) => m.yellow().bold().to_string(),
+            _ => m.cyan().bold().to_string(),
+          };
+          format!(" {}", colored)
+        } else {
+          format!(" {}", m)
+        }
+      })
+      .unwrap_or_default();
 
     out.push_str(&format!(
-      "{}: [{}]: {}\n",
-      self.severity_text(),
-      self.diagnostic.code.code(),
-      self.diagnostic.message,
+      "  {} {} {}{}{}\n",
+      blank_gutter,
+      bar,
+      " ".repeat(display_pad),
+      underline,
+      msg_part
     ));
 
-    if let Some(primary) = self.diagnostic.labels.first() {
+    if let Some(note) = &label.note {
+      let note_c = if color { note.cyan().italic().to_string() } else { format!("note: {note}") };
+      let prefix = if color { format!("{}", note_c) } else { note_c };
       out.push_str(&format!(
-        "  --> {}:{}:{}\n",
-        primary.span.file, primary.span.line, primary.span.column,
+        "  {} {} {}↳ {}\n",
+        blank_gutter,
+        bar,
+        " ".repeat(display_pad),
+        prefix
       ));
-      out.push_str("   |\n");
-
-      if let Some(line_content) = self.get_line_content(primary.span.line) {
-        let line_num = primary.span.line;
-        out.push_str(&format!(" {:>3} | {}\n", line_num, line_content));
-
-        for label in &self.diagnostic.labels {
-          if label.span.line != line_num {
-            continue;
-          }
-          let ch = Self::underline_char(label.style);
-          let start_col = label.span.column.saturating_sub(1);
-          let length = label.span.length.max(1);
-          let padding = " ".repeat(start_col);
-          let underline = ch.to_string().repeat(length);
-
-          if let Some(msg) = &label.message {
-            out.push_str(&format!("   | {}{} {}\n", padding, underline, msg));
-          } else {
-            out.push_str(&format!("   | {}{}\n", padding, underline));
-          }
-        }
-      }
-
-      out.push_str("   |\n");
     }
+  }
 
+  fn write_notes_help(&self, out: &mut String, color: bool) {
+    let eq = if color { "=".blue().bold().to_string() } else { "=".to_string() };
     for note in &self.diagnostic.notes {
-      out.push_str(&format!("   = note: {}\n", note));
+      let label = if color { "note".cyan().bold().to_string() } else { "note".to_string() };
+      out.push_str(&format!("   {} {}: {}\n", eq, label, note));
     }
     if let Some(help) = &self.diagnostic.help {
-      out.push_str(&format!("   = help: {}\n", help));
+      let label = if color { "help".cyan().bold().to_string() } else { "help".to_string() };
+      out.push_str(&format!("   {} {}: {}\n", eq, label, help));
     }
-
-    out
   }
+
+  fn write_suggestions(&self, out: &mut String, color: bool) {
+    if self.diagnostic.suggestions.is_empty() {
+      return;
+    }
+    let eq = if color { "=".blue().bold().to_string() } else { "=".to_string() };
+    let label = if color { "help".cyan().bold().to_string() } else { "help".to_string() };
+    for s in &self.diagnostic.suggestions {
+      let header = match &s.message {
+        Some(m) => format!("{}: try this:", m),
+        None => "try this:".to_string(),
+      };
+      out.push_str(&format!("   {} {}: {}\n", eq, label, header));
+      for line in s.replacement.lines() {
+        let body = if color { line.green().to_string() } else { line.to_string() };
+        out.push_str(&format!("       {}\n", body));
+      }
+      Self::write_applicability(out, s, color);
+    }
+  }
+
+  fn write_applicability(out: &mut String, s: &Suggestion, color: bool) {
+    let kind = match s.applicability {
+      crate::diagnostic::Applicability::MachineApplicable => "auto-applicable",
+      crate::diagnostic::Applicability::MaybeIncorrect => "review needed",
+      crate::diagnostic::Applicability::HasPlaceholders => "has placeholders",
+      crate::diagnostic::Applicability::Unspecified => return,
+    };
+    let body = if color { kind.dimmed().to_string() } else { kind.to_string() };
+    out.push_str(&format!("       ({})\n", body));
+  }
+}
+
+// ---------- helpers ----------
+
+fn label_touches(label: &Label, line: usize) -> bool {
+  let start = label.span.line;
+  let end_line = end_line_of(label);
+  line >= start && line <= end_line
+}
+
+/// For a possibly multi-line label, clamp its column range to the given line.
+fn label_columns_on_line(label: &Label, line: usize, raw_line: &str) -> (usize, usize) {
+  let start_line = label.span.line;
+  let line_byte_len = raw_line.len();
+  let line_end_col = line_byte_len + 1; // 1-based inclusive end-of-line column
+
+  let start_col = if line == start_line { label.span.column.max(1) } else { 1 };
+  let end_col_inclusive = if end_line_of(label) == line {
+    if line == start_line {
+      // single-line label: column..column+length
+      (label.span.column + label.span.length).max(label.span.column + 1)
+    } else {
+      // last line of multi-line label: end at remaining length on this line
+      // we don't have per-line offsets, so just stop at line end
+      line_end_col
+    }
+  } else {
+    line_end_col
+  };
+
+  (start_col, end_col_inclusive.min(line_end_col).max(start_col + 1))
+}
+
+fn end_line_of(label: &Label) -> usize {
+  // Without per-line offsets we treat `length` as a byte budget consumed
+  // top-down; callers that use multi-line spans should split them into
+  // multiple labels for precise rendering. For our purposes the label
+  // ends on its start line unless the user attaches multiple labels.
+  label.span.line
+}
+
+fn expand_tabs(line: &str, tab_width: usize) -> String {
+  if !line.contains('\t') {
+    return line.to_string();
+  }
+  let mut out = String::with_capacity(line.len() + tab_width);
+  let mut col = 0usize;
+  for ch in line.chars() {
+    if ch == '\t' {
+      let advance = tab_width - (col % tab_width.max(1));
+      for _ in 0..advance {
+        out.push(' ');
+      }
+      col += advance;
+    } else {
+      out.push(ch);
+      col += UnicodeWidthStr::width(ch.to_string().as_str());
+    }
+  }
+  out
+}
+
+fn truncate_line(line: &str, max: usize) -> String {
+  if max == 0 {
+    return line.to_string();
+  }
+  let w = UnicodeWidthStr::width(line);
+  if w <= max {
+    return line.to_string();
+  }
+  // keep first max-1 cols, then ellipsis
+  let mut out = String::new();
+  let mut acc = 0usize;
+  for ch in line.chars() {
+    let cw = UnicodeWidthStr::width(ch.to_string().as_str());
+    if acc + cw + 1 > max {
+      break;
+    }
+    out.push(ch);
+    acc += cw;
+  }
+  out.push('…');
+  out
+}
+
+/// Display width of `&line[..n_byte_cols]`, accounting for tabs + unicode width.
+fn display_width_prefix(line: &str, byte_offset_0based: usize, tab_width: usize) -> usize {
+  let mut width = 0usize;
+  let mut byte_seen = 0usize;
+  for ch in line.chars() {
+    if byte_seen >= byte_offset_0based {
+      break;
+    }
+    if ch == '\t' {
+      width += tab_width - (width % tab_width.max(1));
+    } else {
+      width += UnicodeWidthStr::width(ch.to_string().as_str());
+    }
+    byte_seen += ch.len_utf8();
+  }
+  width
+}
+
+fn display_width_range(
+  line: &str,
+  start_byte_0based: usize,
+  end_byte_0based: usize,
+  tab_width: usize,
+) -> usize {
+  if end_byte_0based <= start_byte_0based {
+    return 0;
+  }
+  let mut width = 0usize;
+  let mut byte_seen = 0usize;
+  for ch in line.chars() {
+    if byte_seen >= end_byte_0based {
+      break;
+    }
+    if byte_seen >= start_byte_0based {
+      if ch == '\t' {
+        width += tab_width - (width % tab_width.max(1));
+      } else {
+        width += UnicodeWidthStr::width(ch.to_string().as_str());
+      }
+    }
+    byte_seen += ch.len_utf8();
+  }
+  width
 }

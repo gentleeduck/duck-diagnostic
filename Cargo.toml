@@ -1,6 +1,6 @@
 [package]
 name = "duck-diagnostic"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["gentleduck"]
 description = "Generic diagnostic engine for building rich error reporting into any tool"
@@ -12,5 +12,15 @@ keywords = ["diagnostic", "compiler", "error-reporting", "linter"]
 categories = ["development-tools", "compilers"]
 readme = "README.md"
 
+[features]
+default = ["json"]
+json = ["serde", "serde_json"]
+
 [dependencies]
 colored = "3"
+unicode-width = "0.2"
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[dev-dependencies]
+insta = "1"

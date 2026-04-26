@@ -94,14 +94,8 @@ fn demo_compiler() {
 
   engine.emit(
     Diagnostic::new(LangError::TypeMismatch, "mismatched types in expression")
-      .with_label(Label::primary(
-        Span::new("main.lang", 4, 17, 1),
-        Some("this is a string".into()),
-      ))
-      .with_label(Label::secondary(
-        Span::new("main.lang", 4, 21, 1),
-        Some("this is an int".into()),
-      ))
+      .with_label(Label::primary(Span::new("main.lang", 4, 17, 1), Some("this is a string".into())))
+      .with_label(Label::secondary(Span::new("main.lang", 4, 21, 1), Some("this is an int".into())))
       .with_note("cannot add `String` and `i32`")
       .with_help("convert one side: `a.parse::<i32>()`"),
   );
@@ -194,11 +188,12 @@ license = 42"#;
   );
 
   engine.emit(
-    Diagnostic::new(ConfigError::DeprecatedField, "`edition = \"2018\"` is outdated")
-      .with_label(Label::primary(
+    Diagnostic::new(ConfigError::DeprecatedField, "`edition = \"2018\"` is outdated").with_label(
+      Label::primary(
         Span::new("Cargo.toml", 4, 0, 18),
         Some("consider updating to \"2021\" or \"2024\"".into()),
-      )),
+      ),
+    ),
   );
 
   engine.print_all(config);

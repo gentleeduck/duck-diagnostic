@@ -64,14 +64,8 @@ fn engine_clear_resets_everything() {
 fn diagnostic_builder_chain() {
   let source = "let val = foo + bar;";
   let d = Diagnostic::new(TestCode::SyntaxError, "unexpected token")
-    .with_label(Label::primary(
-      Span::new("test.rs", 1, 10, 3),
-      Some("here".into()),
-    ))
-    .with_label(Label::secondary(
-      Span::new("test.rs", 1, 16, 3),
-      Some("related".into()),
-    ))
+    .with_label(Label::primary(Span::new("test.rs", 1, 10, 3), Some("here".into())))
+    .with_label(Label::secondary(Span::new("test.rs", 1, 16, 3), Some("related".into())))
     .with_note("check your syntax")
     .with_help("did you mean `let`?");
 
@@ -181,14 +175,8 @@ fn multiple_labels_same_line() {
 
   engine.emit(
     Diagnostic::new(TestCode::TypeMismatch, "mismatched types in expression")
-      .with_label(Label::primary(
-        Span::new("expr.rs", 1, 13, 1),
-        Some("this is a string".into()),
-      ))
-      .with_label(Label::secondary(
-        Span::new("expr.rs", 1, 17, 1),
-        Some("this is an int".into()),
-      ))
+      .with_label(Label::primary(Span::new("expr.rs", 1, 13, 1), Some("this is a string".into())))
+      .with_label(Label::secondary(Span::new("expr.rs", 1, 17, 1), Some("this is an int".into())))
       .with_note("cannot add `String` and `i32`")
       .with_help("convert one side: `a.parse::<i32>()`"),
   );
@@ -196,6 +184,173 @@ fn multiple_labels_same_line() {
   engine.print_all(source);
 
   assert_eq!(engine.error_count(), 1);
+}
+
+#[test]
+fn from_zero_based_adds_one() {
+  let s = Span::from_zero_based("a.rs", 0, 0, 1);
+  assert_eq!(s.line, 1);
+  assert_eq!(s.column, 1);
+  let s2 = Span::from_zero_based("a.rs", 5, 12, 3);
+  assert_eq!(s2.line, 6);
+  assert_eq!(s2.column, 13);
+}
+
+#[test]
+fn label_with_note_attaches_inline_note() {
+  let span = Span::new("a.rs", 1, 1, 3);
+  let l = Label::primary(span, Some("hi".into())).with_note("see also: rule X");
+  assert_eq!(l.note.as_deref(), Some("see also: rule X"));
+}
+
+#[test]
+fn suggestion_renders_in_pretty_output() {
+  let source = "var x = 1;";
+  let span = Span::new("a.js", 1, 1, 3);
+  let d = Diagnostic::new(TestCode::SyntaxError, "prefer `let`")
+    .with_label(Label::primary(span.clone(), Some("here".into())))
+    .with_suggestion(
+      Suggestion::new(span, "let")
+        .with_message("replace `var`")
+        .with_applicability(Applicability::MachineApplicable),
+    );
+  let f = DiagnosticFormatter::new(&d, source);
+  let out = f.format_plain();
+  assert!(out.contains("try this:"));
+  assert!(out.contains("let"));
+  assert!(out.contains("auto-applicable"));
+}
+
+#[test]
+fn render_options_color_disable_matches_plain() {
+  let source = "let x = 1;";
+  let d = Diagnostic::new(TestCode::SyntaxError, "bad")
+    .with_label(Label::primary(Span::new("a.rs", 1, 5, 1), None));
+  let f1 = DiagnosticFormatter::new(&d, source)
+    .with_options(RenderOptions { color: false, ..Default::default() });
+  let f2 = DiagnosticFormatter::new(&d, source);
+  assert_eq!(f1.format(), f2.format_plain());
+}
+
+#[test]
+fn source_cache_reused_across_diagnostics() {
+  let source = "a\nb\nc\n";
+  let cache = SourceCache::new(source);
+  let d1 = Diagnostic::new(TestCode::SyntaxError, "x")
+    .with_label(Label::primary(Span::new("f", 1, 1, 1), None));
+  let d2 = Diagnostic::new(TestCode::SyntaxError, "y")
+    .with_label(Label::primary(Span::new("f", 2, 1, 1), None));
+  let f1 = DiagnosticFormatter::with_cache(&d1, &cache);
+  let f2 = DiagnosticFormatter::with_cache(&d2, &cache);
+  assert!(f1.format_plain().contains("x"));
+  assert!(f2.format_plain().contains("y"));
+}
+
+#[test]
+fn bug_severity_counts_separately() {
+  #[derive(Debug, Clone, Copy)]
+  struct Ice;
+  impl DiagnosticCode for Ice {
+    fn code(&self) -> &str {
+      "ICE0001"
+    }
+    fn severity(&self) -> Severity {
+      Severity::Bug
+    }
+  }
+  let mut engine = DiagnosticEngine::<Ice>::new();
+  engine.emit(Diagnostic::new(Ice, "internal compiler error"));
+  assert_eq!(engine.bug_count(), 1);
+  assert!(engine.has_bugs());
+  assert_eq!(engine.error_count(), 0);
+}
+
+#[test]
+fn url_appears_in_pretty_output() {
+  #[derive(Debug, Clone, Copy)]
+  struct WithUrl;
+  impl DiagnosticCode for WithUrl {
+    fn code(&self) -> &str {
+      "L0001"
+    }
+    fn severity(&self) -> Severity {
+      Severity::Warning
+    }
+    fn url(&self) -> Option<&'static str> {
+      Some("https://example.com/L0001")
+    }
+  }
+  let d =
+    Diagnostic::new(WithUrl, "lint").with_label(Label::primary(Span::new("a.rs", 1, 1, 1), None));
+  let f = DiagnosticFormatter::new(&d, "x");
+  assert!(f.format_plain().contains("https://example.com/L0001"));
+}
+
+#[test]
+fn multi_file_renders_two_sections() {
+  let source = "abc\ndef\n";
+  let d = Diagnostic::new(TestCode::SyntaxError, "cross-file mismatch")
+    .with_label(Label::primary(Span::new("a.rs", 1, 1, 3), Some("here".into())))
+    .with_label(Label::secondary(Span::new("b.rs", 2, 1, 3), Some("and here".into())));
+  let f = DiagnosticFormatter::new(&d, source);
+  let out = f.format_plain();
+  assert!(out.contains("a.rs:1:1"));
+  assert!(out.contains("b.rs:2:1"));
+}
+
+#[test]
+fn tab_padding_aligns_caret() {
+  // tabs in source → caret should appear at expanded column, not raw byte column
+  let source = "\t\tfoo";
+  let d = Diagnostic::new(TestCode::SyntaxError, "x")
+    .with_label(Label::primary(Span::new("a", 1, 3, 3), None));
+  let f = DiagnosticFormatter::new(&d, source).with_options(RenderOptions {
+    color: false,
+    tab_width: 4,
+    ..Default::default()
+  });
+  let out = f.format();
+  // Expanded: 8 spaces (2 tabs at width 4) before "foo".
+  // Caret should appear at column 8 (display) → the line containing the
+  // underline must start with at least 8 leading spaces after the gutter.
+  assert!(out.contains("        ^^^"));
+}
+
+#[test]
+fn diag_macro_compiles() {
+  let span = Span::new("a", 1, 1, 1);
+  let d = duck_diagnostic::diag!(TestCode::SyntaxError, span, "bad");
+  assert_eq!(d.message, "bad");
+  assert_eq!(d.labels.len(), 1);
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn json_output_includes_required_fields() {
+  use serde::Serialize;
+  #[derive(Debug, Clone, Copy, Serialize)]
+  enum C {
+    X,
+  }
+  impl DiagnosticCode for C {
+    fn code(&self) -> &str {
+      "X0001"
+    }
+    fn severity(&self) -> Severity {
+      Severity::Error
+    }
+  }
+  let mut engine = DiagnosticEngine::<C>::new();
+  engine.emit(
+    Diagnostic::new(C::X, "boom")
+      .with_label(Label::primary(Span::new("a.rs", 1, 1, 1), Some("here".into()))),
+  );
+  let json = engine.format_all_json();
+  assert!(json.contains("\"code\""));
+  assert!(json.contains("\"X0001\""));
+  assert!(json.contains("\"severity\""));
+  assert!(json.contains("\"error\""));
+  assert!(json.contains("\"labels\""));
 }
 
 #[test]
