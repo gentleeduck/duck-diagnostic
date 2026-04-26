@@ -216,8 +216,11 @@ fn suggestion_renders_in_pretty_output() {
     );
   let f = DiagnosticFormatter::new(&d, source);
   let out = f.format_plain();
-  assert!(out.contains("try this:"));
-  assert!(out.contains("let"));
+  // header line has the suggestion message
+  assert!(out.contains("help: replace `var`"));
+  // diff lines: minus original + plus rewritten
+  assert!(out.contains("- var x = 1;"));
+  assert!(out.contains("+ let x = 1;"));
   assert!(out.contains("auto-applicable"));
 }
 

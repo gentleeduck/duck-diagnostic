@@ -375,16 +375,79 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
     let label = if color { "help".cyan().bold().to_string() } else { "help".to_string() };
     for s in &self.diagnostic.suggestions {
       let header = match &s.message {
-        Some(m) => format!("{}: try this:", m),
+        Some(m) => m.to_string(),
         None => "try this:".to_string(),
       };
       out.push_str(&format!("   {} {}: {}\n", eq, label, header));
-      for line in s.replacement.lines() {
-        let body = if color { line.green().to_string() } else { line.to_string() };
-        out.push_str(&format!("       {}\n", body));
-      }
+      self.write_suggestion_diff(out, s, color);
       Self::write_applicability(out, s, color);
     }
+  }
+
+  /// Render a suggestion as rustc-style minus/plus diff lines. Falls back to
+  /// flat replacement render when the source line isn't available (synthetic
+  /// span or out-of-range line).
+  fn write_suggestion_diff(&self, out: &mut String, s: &Suggestion, color: bool) {
+    let line_num = s.span.line;
+    let orig_line = match self.cache.line(line_num) {
+      Some(l) => l,
+      None => {
+        // No source — flat render.
+        for line in s.replacement.lines() {
+          let body = if color { line.green().to_string() } else { line.to_string() };
+          out.push_str(&format!("       {}\n", body));
+        }
+        return;
+      },
+    };
+
+    // Convert 1-based column → byte offset. Use saturating arithmetic to
+    // tolerate suggestions slightly off the line end (e.g. column = line.len() + 1).
+    let col0 = s.span.column.saturating_sub(1);
+    let line_bytes = orig_line.len();
+    let start = col0.min(line_bytes);
+    let end = (start + s.span.length).min(line_bytes);
+    let prefix = &orig_line[..start];
+    let suffix = &orig_line[end..];
+
+    // Build rewritten content by splicing replacement between prefix + suffix.
+    // First rewritten line includes prefix + first replacement line; subsequent
+    // replacement lines stand alone; final replacement line gets suffix appended.
+    let repl_lines: Vec<&str> = s.replacement.split('\n').collect();
+    let mut new_lines: Vec<String> = Vec::with_capacity(repl_lines.len());
+    for (i, r) in repl_lines.iter().enumerate() {
+      let head = if i == 0 { prefix } else { "" };
+      let tail = if i == repl_lines.len() - 1 { suffix } else { "" };
+      new_lines.push(format!("{}{}{}", head, r, tail));
+    }
+
+    // Gutter width = max line number we'll print.
+    let last_line = line_num + new_lines.len().saturating_sub(1);
+    let gutter_w = last_line.to_string().len().max(2);
+    let bar = if color { "|".blue().bold().to_string() } else { "|".to_string() };
+    let blank_gutter = " ".repeat(gutter_w);
+
+    out.push_str(&format!("  {} {}\n", blank_gutter, bar));
+
+    // Old line (single, since spans on one line; multi-line removal not modelled).
+    let line_label = format!("{:>w$}", line_num, w = gutter_w);
+    let line_label_c =
+      if color { line_label.blue().bold().to_string() } else { line_label.clone() };
+    let minus = if color { "-".red().bold().to_string() } else { "-".to_string() };
+    let orig_body = if color { orig_line.red().to_string() } else { orig_line.to_string() };
+    out.push_str(&format!("  {} {} {}\n", line_label_c, minus, orig_body));
+
+    // New lines (one or many).
+    let plus = if color { "+".green().bold().to_string() } else { "+".to_string() };
+    for (i, body) in new_lines.iter().enumerate() {
+      let n = line_num + i;
+      let lbl = format!("{:>w$}", n, w = gutter_w);
+      let lbl_c = if color { lbl.blue().bold().to_string() } else { lbl.clone() };
+      let body_c = if color { body.green().to_string() } else { body.to_string() };
+      out.push_str(&format!("  {} {} {}\n", lbl_c, plus, body_c));
+    }
+
+    out.push_str(&format!("  {} {}\n", blank_gutter, bar));
   }
 
   fn write_applicability(out: &mut String, s: &Suggestion, color: bool) {

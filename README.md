@@ -14,6 +14,10 @@
   <a href="./LICENSE"><img src="https://img.shields.io/crates/l/duck-diagnostic.svg" alt="MIT"></a>
 </p>
 
+## What's in 0.3
+
+- **rustc-style diff suggestions** — `with_suggestion(...)` now renders `-` original / `+` replacement with red/green coloring and aligned line gutter, matching rustc's fix-it format.
+
 ## What's in 0.2
 
 - **Multi-file diagnostics** — labels in different files render as separate sections.
@@ -33,7 +37,7 @@
 
 ```toml
 [dependencies]
-duck-diagnostic = "0.2"
+duck-diagnostic = "0.3"
 ```
 
 ```rust
