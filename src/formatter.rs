@@ -153,6 +153,8 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
     self.write_labels_grouped(&mut out, color);
     self.write_notes_help(&mut out, color);
     self.write_suggestions(&mut out, color);
+    // Trailing blank line so consecutive diagnostics don't visually merge.
+    out.push('\n');
     out
   }
 
@@ -267,91 +269,108 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
         if color { line_label.blue().bold().to_string() } else { line_label.clone() };
       out.push_str(&format!("  {} {} {}\n", line_label_c, bar, truncated));
 
-      // labels that touch this line
-      for label in labels {
-        if !label_touches(label, line_num) {
-          continue;
-        }
-        self.write_caret_line(out, label, line_num, raw, gutter_w, color);
+      // collect labels touching this line, sorted by start column
+      let mut on_line: Vec<&Label> =
+        labels.iter().copied().filter(|l| label_touches(l, line_num)).collect();
+      if on_line.is_empty() {
+        continue;
       }
+      on_line.sort_by_key(|l| l.span.column);
+      self.write_caret_block(out, &on_line, line_num, raw, gutter_w, color);
     }
 
     out.push_str(&format!("  {} {}\n", blank_gutter, bar));
   }
 
-  fn write_caret_line(
+  /// Render all labels on one source line as a stacked block.
+  ///
+  /// Layout (rustc-style):
+  ///   row 0  : carets for every label  →  message of last (rightmost) label
+  ///   row 1  : carets up to label[n-2] →  message of label[n-2]
+  ///   …
+  ///   row n-1: caret for label[0]      →  message of label[0]
+  ///
+  /// Each label keeps its own color. Optional per-label `note` renders right
+  /// after that label's message row.
+  fn write_caret_block(
     &self,
     out: &mut String,
-    label: &Label,
+    sorted: &[&Label],
     line_num: usize,
     raw_line: &str,
     gutter_w: usize,
     color: bool,
   ) {
-    // Column range on this specific line (clamps to line bounds for multi-line labels).
-    let (col_start_1based, col_end_1based) = label_columns_on_line(label, line_num, raw_line);
-    let display_pad = display_width_prefix(raw_line, col_start_1based - 1, self.options.tab_width);
-    let display_len = display_width_range(
-      raw_line,
-      col_start_1based - 1,
-      col_end_1based - 1,
-      self.options.tab_width,
-    )
-    .max(1);
+    let infos: Vec<(usize, usize, &Label)> = sorted
+      .iter()
+      .map(|label| {
+        let (col_start, col_end) = label_columns_on_line(label, line_num, raw_line);
+        let pad =
+          display_width_prefix(raw_line, col_start.saturating_sub(1), self.options.tab_width);
+        let len = display_width_range(
+          raw_line,
+          col_start.saturating_sub(1),
+          col_end.saturating_sub(1),
+          self.options.tab_width,
+        )
+        .max(1);
+        (pad, len, *label)
+      })
+      .collect();
 
-    let ch = Self::underline_char(label.style);
-    let underline_str: String = std::iter::repeat(ch).take(display_len).collect();
-    let underline = if color {
-      match (self.diagnostic.severity, label.style) {
-        (Severity::Bug | Severity::Error, LabelStyle::Primary) => {
-          underline_str.red().bold().to_string()
-        },
-        (Severity::Warning, LabelStyle::Primary) => underline_str.yellow().bold().to_string(),
-        _ => underline_str.cyan().bold().to_string(),
-      }
-    } else {
-      underline_str
-    };
-
+    let n = infos.len();
     let bar = if color { "|".blue().bold().to_string() } else { "|".to_string() };
     let blank_gutter = " ".repeat(gutter_w);
 
-    let msg_part = label
-      .message
-      .as_ref()
-      .map(|m| {
-        if color {
-          let colored = match (self.diagnostic.severity, label.style) {
-            (Severity::Bug | Severity::Error, LabelStyle::Primary) => m.red().bold().to_string(),
-            (Severity::Warning, LabelStyle::Primary) => m.yellow().bold().to_string(),
-            _ => m.cyan().bold().to_string(),
-          };
-          format!(" {}", colored)
-        } else {
-          format!(" {}", m)
+    for k in 0..n {
+      let m = n - 1 - k;
+      let visible = &infos[..=m];
+
+      // Build the caret row by walking visible labels left→right.
+      let mut buf = String::new();
+      let mut cursor = 0usize;
+      for (pad, len, lbl) in visible {
+        while cursor < *pad {
+          buf.push(' ');
+          cursor += 1;
         }
-      })
-      .unwrap_or_default();
+        let ch = Self::underline_char(lbl.style);
+        let underline: String = std::iter::repeat(ch).take(*len).collect();
+        let painted = if color {
+          color_for(self.diagnostic.severity, lbl.style, &underline)
+        } else {
+          underline
+        };
+        buf.push_str(&painted);
+        cursor += *len;
+      }
 
-    out.push_str(&format!(
-      "  {} {} {}{}{}\n",
-      blank_gutter,
-      bar,
-      " ".repeat(display_pad),
-      underline,
-      msg_part
-    ));
+      // Append the message of `m` after the last caret with one space of gap.
+      let m_label = visible.last().unwrap().2;
+      let line = match &m_label.message {
+        Some(msg) => {
+          let painted_msg = if color {
+            color_for(self.diagnostic.severity, m_label.style, msg)
+          } else {
+            msg.clone()
+          };
+          format!("  {} {} {} {}\n", blank_gutter, bar, buf, painted_msg)
+        },
+        None => format!("  {} {} {}\n", blank_gutter, bar, buf),
+      };
+      out.push_str(&line);
 
-    if let Some(note) = &label.note {
-      let note_c = if color { note.cyan().italic().to_string() } else { format!("note: {note}") };
-      let prefix = if color { format!("{}", note_c) } else { note_c };
-      out.push_str(&format!(
-        "  {} {} {}↳ {}\n",
-        blank_gutter,
-        bar,
-        " ".repeat(display_pad),
-        prefix
-      ));
+      // Per-label inline note, rendered on its own row directly under this row.
+      if let Some(note) = &m_label.note {
+        let note_c = if color { note.cyan().italic().to_string() } else { format!("note: {note}") };
+        out.push_str(&format!(
+          "  {} {} {}↳ {}\n",
+          blank_gutter,
+          bar,
+          " ".repeat(infos[m].0),
+          note_c
+        ));
+      }
     }
   }
 
@@ -463,6 +482,14 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
 }
 
 // ---------- helpers ----------
+
+fn color_for(sev: Severity, style: LabelStyle, s: &str) -> String {
+  match (sev, style) {
+    (Severity::Bug | Severity::Error, LabelStyle::Primary) => s.red().bold().to_string(),
+    (Severity::Warning, LabelStyle::Primary) => s.yellow().bold().to_string(),
+    _ => s.cyan().bold().to_string(),
+  }
+}
 
 fn label_touches(label: &Label, line: usize) -> bool {
   let start = label.span.line;
