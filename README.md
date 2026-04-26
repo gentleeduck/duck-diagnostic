@@ -188,6 +188,8 @@ engine.clear();
 
 **Diff suggestions** - rustc-style `-`/`+` rendering, insertions, multi-line, applicability levels: [`examples/diff_suggestions.rs`](examples/diff_suggestions.rs)
 
+**Showcase** - one of every diagnostic flavor (errors, warnings, ICE, multi-file, multi-label, suggestions, deprecations) in one fake-compiler run: [`examples/showcase.rs`](examples/showcase.rs)
+
 **Multi-file** - labels across two files: [`examples/multi_file.rs`](examples/multi_file.rs)
 
 **JSON output** - LSP/IDE-friendly: [`examples/json_output.rs`](examples/json_output.rs)
