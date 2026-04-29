@@ -150,7 +150,7 @@ fn warning_only_summary() {
 #[test]
 fn span_new_constructor() {
   let span = Span::new("file.rs", 10, 5, 3);
-  assert_eq!(span.file, "file.rs");
+  assert_eq!(&*span.file, "file.rs");
   assert_eq!(span.line, 10);
   assert_eq!(span.column, 5);
   assert_eq!(span.length, 3);

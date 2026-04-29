@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -71,7 +71,7 @@ pub trait DiagnosticCode: fmt::Debug + Clone {
 #[cfg_attr(feature = "serde", derive(Serialize))]
 #[cfg_attr(feature = "serde", derive(Deserialize))]
 pub struct Span {
-  pub file: String,
+  pub file: Arc<str>,
   /// 1-based line number.
   pub line: usize,
   /// 1-based column number.
@@ -83,7 +83,7 @@ pub struct Span {
 impl Span {
   /// Construct a 1-based span. Use this when your front-end already counts
   /// from 1 (most do).
-  pub fn new(file: impl Into<String>, line: usize, column: usize, length: usize) -> Self {
+  pub fn new(file: impl Into<Arc<str>>, line: usize, column: usize, length: usize) -> Self {
     Self { file: file.into(), line, column, length }
   }
 
@@ -97,7 +97,7 @@ impl Span {
   /// assert_eq!(s.column, 1);
   /// ```
   pub fn from_zero_based(
-    file: impl Into<String>,
+    file: impl Into<Arc<str>>,
     line: usize,
     column: usize,
     length: usize,
@@ -107,7 +107,7 @@ impl Span {
 
   /// Convenience: synthetic span used for diagnostics that don't point at any
   /// real source location (e.g. CLI flag errors).
-  pub fn synthetic(file: impl Into<String>) -> Self {
+  pub fn synthetic(file: impl Into<Arc<str>>) -> Self {
     Self { file: file.into(), line: 0, column: 0, length: 0 }
   }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "duck-diagnostic"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2021"
 authors = ["gentleduck"]
 description = "Generic diagnostic engine for building rich error reporting into any tool"
@@ -19,7 +19,7 @@ json = ["serde", "serde_json"]
 [dependencies]
 colored = "3"
 unicode-width = "0.2"
-serde = { version = "1", features = ["derive"], optional = true }
+serde = { version = "1", features = ["derive", "rc"], optional = true }
 serde_json = { version = "1", optional = true }
 
 [dev-dependencies]

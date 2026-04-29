@@ -193,13 +193,13 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
     // Group by file so multi-file diagnostics render as separate sections.
     let mut files: Vec<&str> = Vec::new();
     for l in labels {
-      if !files.iter().any(|f| *f == l.span.file.as_str()) {
-        files.push(l.span.file.as_str());
+      if !files.iter().any(|f| **f == *l.span.file) {
+        files.push(&l.span.file);
       }
     }
 
     for (idx, file) in files.iter().enumerate() {
-      let in_file: Vec<&Label> = labels.iter().filter(|l| l.span.file.as_str() == *file).collect();
+      let in_file: Vec<&Label> = labels.iter().filter(|l| *l.span.file == **file).collect();
       let primary_in_file = in_file
         .iter()
         .find(|l| l.style == LabelStyle::Primary)
@@ -215,9 +215,9 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
         "  {} {}:{}:{}",
         if color { "-->".blue().bold().to_string() } else { "-->".to_string() },
         if color {
-          primary.span.file.white().bold().to_string()
+          primary.span.file.clone().white().bold().to_string()
         } else {
-          primary.span.file.clone()
+          primary.span.file.clone().to_string()
         },
         if color {
           primary.span.line.to_string().white().bold().to_string()
