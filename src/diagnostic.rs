@@ -1,7 +1,7 @@
 use std::fmt;
 
 #[cfg(feature = "serde")]
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Severity of a diagnostic.
 ///
@@ -69,6 +69,7 @@ pub trait DiagnosticCode: fmt::Debug + Clone {
 /// Rendering uses [`unicode-width`](https://docs.rs/unicode-width) to compute display width.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
+#[cfg_attr(feature = "serde", derive(Deserialize))]
 pub struct Span {
   pub file: String,
   /// 1-based line number.
