@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// `Bug` is reserved for internal compiler errors (ICEs) — anything that
 /// indicates a defect in the tool itself, not the user's input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum Severity {
   Bug,
@@ -113,7 +113,7 @@ impl Span {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum LabelStyle {
   Primary,
@@ -147,7 +147,7 @@ impl Label {
 
 /// How confident the suggestion is — controls whether IDEs may auto-apply it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum Applicability {
   /// Safe to apply automatically.
