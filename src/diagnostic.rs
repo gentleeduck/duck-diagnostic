@@ -11,10 +11,15 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum Severity {
+  /// Internal compiler error / ICE. Indicates a defect in the tool itself.
   Bug,
+  /// Hard error. Stops the build / run.
   Error,
+  /// Soft warning. Doesn't stop the build.
   Warning,
+  /// Informational note attached to a diagnostic.
   Note,
+  /// Suggestion or hint.
   Help,
 }
 
@@ -65,7 +70,9 @@ impl Severity {
 /// }
 /// ```
 pub trait DiagnosticCode: fmt::Debug + Clone {
+  /// Stable string identifier rendered in the header (e.g. `"E0001"`).
   fn code(&self) -> &str;
+  /// Severity inferred from this code.
   fn severity(&self) -> Severity;
 
   /// Optional documentation URL rendered after the code in pretty mode.
@@ -85,6 +92,7 @@ pub trait DiagnosticCode: fmt::Debug + Clone {
 #[cfg_attr(feature = "serde", derive(Serialize))]
 #[cfg_attr(feature = "serde", derive(Deserialize))]
 pub struct Span {
+  /// Source file path.
   pub file: Arc<str>,
   /// 1-based line number.
   pub line: usize,
@@ -126,33 +134,44 @@ impl Span {
   }
 }
 
+/// Caret style for a label. `Primary` underlines with `^`, `Secondary` with `-`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum LabelStyle {
+  /// Main error site. Rendered with `^` carets in the diagnostic color.
   Primary,
+  /// Related context. Rendered with `-` carets in cyan.
   Secondary,
 }
 
+/// A span + optional message + optional per-caret note. Multiple labels per
+/// diagnostic stack rustc-style.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Label {
+  /// Source location this label points at.
   pub span: Span,
+  /// Inline message printed next to the caret.
   pub message: Option<String>,
+  /// Caret style (`Primary` / `Secondary`).
   pub style: LabelStyle,
   /// Optional short note rendered immediately after the caret.
   pub note: Option<String>,
 }
 
 impl Label {
+  /// Build a `Primary` label (main error site).
   pub fn primary(span: Span, message: impl Into<Option<String>>) -> Self {
     Self { span, message: message.into(), style: LabelStyle::Primary, note: None }
   }
 
+  /// Build a `Secondary` label (related context).
   pub fn secondary(span: Span, message: impl Into<Option<String>>) -> Self {
     Self { span, message: message.into(), style: LabelStyle::Secondary, note: None }
   }
 
+  /// Attach a short note rendered under the caret with a `↳` arrow.
   pub fn with_note(mut self, note: impl Into<String>) -> Self {
     self.note = Some(note.into());
     self
@@ -178,13 +197,18 @@ pub enum Applicability {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Suggestion {
+  /// Source range to replace.
   pub span: Span,
+  /// Text spliced in place of `span`. May contain newlines.
   pub replacement: String,
+  /// Header rendered above the diff (defaults to `"try this:"`).
   pub message: Option<String>,
+  /// Confidence level for IDE auto-apply tooling.
   pub applicability: Applicability,
 }
 
 impl Suggestion {
+  /// New suggestion with `Applicability::Unspecified`.
   pub fn new(span: Span, replacement: impl Into<String>) -> Self {
     Self {
       span,
@@ -194,30 +218,42 @@ impl Suggestion {
     }
   }
 
+  /// Override the diff header text.
   pub fn with_message(mut self, message: impl Into<String>) -> Self {
     self.message = Some(message.into());
     self
   }
 
+  /// Set the applicability level.
   pub fn with_applicability(mut self, app: Applicability) -> Self {
     self.applicability = app;
     self
   }
 }
 
+/// One error / warning / note carrying a code, message, labels, notes, help,
+/// and suggestions.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Diagnostic<C: DiagnosticCode> {
+  /// User-supplied error code.
   pub code: C,
+  /// Severity (taken from `code` at construction; can be overridden).
   pub severity: Severity,
+  /// Top-line message rendered next to the code.
   pub message: String,
+  /// Source labels (carets).
   pub labels: Vec<Label>,
+  /// Free-form notes rendered as `= note: …`.
   pub notes: Vec<String>,
+  /// Optional help line rendered as `= help: …`.
   pub help: Option<String>,
+  /// Code rewrite suggestions rendered as `-`/`+` diff blocks.
   pub suggestions: Vec<Suggestion>,
 }
 
 impl<C: DiagnosticCode> Diagnostic<C> {
+  /// Build a diagnostic. Severity is read from `code.severity()`.
   pub fn new(code: C, message: impl Into<String>) -> Self {
     let severity = code.severity();
     Self {
@@ -231,21 +267,25 @@ impl<C: DiagnosticCode> Diagnostic<C> {
     }
   }
 
+  /// Attach a label.
   pub fn with_label(mut self, label: Label) -> Self {
     self.labels.push(label);
     self
   }
 
+  /// Append a free-form note line.
   pub fn with_note(mut self, note: impl Into<String>) -> Self {
     self.notes.push(note.into());
     self
   }
 
+  /// Set the trailing help line. Last call wins.
   pub fn with_help(mut self, help: impl Into<String>) -> Self {
     self.help = Some(help.into());
     self
   }
 
+  /// Attach a code-rewrite suggestion.
   pub fn with_suggestion(mut self, suggestion: Suggestion) -> Self {
     self.suggestions.push(suggestion);
     self

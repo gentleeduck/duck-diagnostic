@@ -21,6 +21,8 @@ pub use smart::{format_all_smart, print_all_smart};
 use crate::style::*;
 use colored::*;
 
+/// Collects diagnostics, tracks per-severity counts, and renders them in
+/// pretty / plain / compact / JSON modes.
 #[derive(Debug)]
 pub struct DiagnosticEngine<C: DiagnosticCode> {
   diagnostics: Vec<Diagnostic<C>>,
@@ -45,10 +47,12 @@ impl<C: DiagnosticCode> Default for DiagnosticEngine<C> {
 }
 
 impl<C: DiagnosticCode> DiagnosticEngine<C> {
+  /// New empty engine.
   pub fn new() -> Self {
     Self::default()
   }
 
+  /// Drop every stored diagnostic and reset all counts.
   pub fn clear(&mut self) {
     self.diagnostics.clear();
     self.bug_count = 0;
@@ -58,6 +62,7 @@ impl<C: DiagnosticCode> DiagnosticEngine<C> {
     self.note_count = 0;
   }
 
+  /// Push a diagnostic and bump its severity bucket.
   pub fn emit(&mut self, diagnostic: Diagnostic<C>) {
     match diagnostic.severity {
       Severity::Bug => self.bug_count += 1,
@@ -69,30 +74,35 @@ impl<C: DiagnosticCode> DiagnosticEngine<C> {
     self.diagnostics.push(diagnostic);
   }
 
+  /// Batch-emit. Severity is taken from each diagnostic, not the method name.
   pub fn emit_errors(&mut self, errors: Vec<Diagnostic<C>>) {
     for d in errors {
       self.emit(d);
     }
   }
 
+  /// Batch-emit. Severity is taken from each diagnostic, not the method name.
   pub fn emit_warnings(&mut self, warnings: Vec<Diagnostic<C>>) {
     for d in warnings {
       self.emit(d);
     }
   }
 
+  /// Batch-emit. Severity is taken from each diagnostic, not the method name.
   pub fn emit_helps(&mut self, helps: Vec<Diagnostic<C>>) {
     for d in helps {
       self.emit(d);
     }
   }
 
+  /// Batch-emit. Severity is taken from each diagnostic, not the method name.
   pub fn emit_notes(&mut self, notes: Vec<Diagnostic<C>>) {
     for d in notes {
       self.emit(d);
     }
   }
 
+  /// Move all diagnostics from `other` into `self` and merge counts.
   pub fn extend(&mut self, other: DiagnosticEngine<C>) {
     self.diagnostics.extend(other.diagnostics);
     self.bug_count += other.bug_count;
@@ -102,6 +112,9 @@ impl<C: DiagnosticCode> DiagnosticEngine<C> {
     self.note_count += other.note_count;
   }
 
+  /// Print every diagnostic with source snippets + carets to stdout, then the
+  /// summary line. Single-source convenience; for multi-file engines use
+  /// [`print_all_smart`].
   pub fn print_all(&self, source_code: &str) {
     let cache = SourceCache::new(source_code);
     for d in &self.diagnostics {
@@ -114,15 +127,19 @@ impl<C: DiagnosticCode> DiagnosticEngine<C> {
     }
   }
 
+  /// Pretty (colored) render of every diagnostic + summary into a string.
   pub fn format_all(&self, source_code: &str) -> String {
     self.format_all_with(source_code, RenderOptions::default())
   }
 
+  /// Plain (no-color) variant of [`Self::format_all`]. Deterministic, suited
+  /// for CI logs.
   pub fn format_all_plain(&self, source_code: &str) -> String {
     let opts = RenderOptions { color: false, ..Default::default() };
     self.format_all_with(source_code, opts)
   }
 
+  /// Render every diagnostic with caller-supplied [`RenderOptions`].
   pub fn format_all_with(&self, source_code: &str, options: RenderOptions) -> String {
     let cache = SourceCache::new(source_code);
     let mut out = String::new();
@@ -224,78 +241,97 @@ impl<C: DiagnosticCode> DiagnosticEngine<C> {
 
   // getters
 
+  /// All stored diagnostics in emit order.
   pub fn get_diagnostics(&self) -> &[Diagnostic<C>] {
     &self.diagnostics
   }
 
+  /// Iterate stored diagnostics in emit order.
   pub fn iter(&self) -> std::slice::Iter<'_, Diagnostic<C>> {
     self.diagnostics.iter()
   }
 
+  /// References to diagnostics with `Severity::Error`.
   pub fn get_errors(&self) -> Vec<&Diagnostic<C>> {
     self.diagnostics.iter().filter(|d| d.severity == Severity::Error).collect()
   }
 
+  /// References to diagnostics with `Severity::Warning`.
   pub fn get_warnings(&self) -> Vec<&Diagnostic<C>> {
     self.diagnostics.iter().filter(|d| d.severity == Severity::Warning).collect()
   }
 
+  /// References to diagnostics with `Severity::Note`.
   pub fn get_notes(&self) -> Vec<&Diagnostic<C>> {
     self.diagnostics.iter().filter(|d| d.severity == Severity::Note).collect()
   }
 
+  /// References to diagnostics with `Severity::Help`.
   pub fn get_helps(&self) -> Vec<&Diagnostic<C>> {
     self.diagnostics.iter().filter(|d| d.severity == Severity::Help).collect()
   }
 
+  /// References to diagnostics with `Severity::Bug`.
   pub fn get_bugs(&self) -> Vec<&Diagnostic<C>> {
     self.diagnostics.iter().filter(|d| d.severity == Severity::Bug).collect()
   }
 
+  /// True when no diagnostics have been emitted.
   pub fn is_empty(&self) -> bool {
     self.diagnostics.is_empty()
   }
 
+  /// Total number of stored diagnostics across every severity.
   pub fn len(&self) -> usize {
     self.diagnostics.len()
   }
 
+  /// Any `Severity::Error` emitted.
   pub fn has_errors(&self) -> bool {
     self.error_count > 0
   }
 
+  /// Any `Severity::Warning` emitted.
   pub fn has_warnings(&self) -> bool {
     self.warning_count > 0
   }
 
+  /// Any `Severity::Help` emitted.
   pub fn has_helps(&self) -> bool {
     self.help_count > 0
   }
 
+  /// Any `Severity::Note` emitted.
   pub fn has_notes(&self) -> bool {
     self.note_count > 0
   }
 
+  /// Any `Severity::Bug` (ICE) emitted.
   pub fn has_bugs(&self) -> bool {
     self.bug_count > 0
   }
 
+  /// Count of `Severity::Bug` diagnostics.
   pub fn bug_count(&self) -> usize {
     self.bug_count
   }
 
+  /// Count of `Severity::Error` diagnostics.
   pub fn error_count(&self) -> usize {
     self.error_count
   }
 
+  /// Count of `Severity::Warning` diagnostics.
   pub fn warning_count(&self) -> usize {
     self.warning_count
   }
 
+  /// Count of `Severity::Help` diagnostics.
   pub fn help_count(&self) -> usize {
     self.help_count
   }
 
+  /// Count of `Severity::Note` diagnostics.
   pub fn note_count(&self) -> usize {
     self.note_count
   }

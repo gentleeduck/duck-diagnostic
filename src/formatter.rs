@@ -11,10 +11,12 @@ pub struct SourceCache<'a> {
 }
 
 impl<'a> SourceCache<'a> {
+  /// Split `source` into lines once and stash the borrowed slices.
   pub fn new(source: &'a str) -> Self {
     Self { lines: source.lines().collect() }
   }
 
+  /// Look up a 1-based line number. Returns `None` for `0` or out-of-range.
   pub fn line(&self, line_num_1based: usize) -> Option<&str> {
     if line_num_1based == 0 {
       return None;
@@ -22,10 +24,12 @@ impl<'a> SourceCache<'a> {
     self.lines.get(line_num_1based - 1).copied()
   }
 
+  /// Total line count.
   pub fn len(&self) -> usize {
     self.lines.len()
   }
 
+  /// True when the source had no lines.
   pub fn is_empty(&self) -> bool {
     self.lines.is_empty()
   }
@@ -91,6 +95,8 @@ impl Default for RenderOptions {
   }
 }
 
+/// Renders one diagnostic at a time. Holds a borrowed (or owned) line cache
+/// plus the active [`RenderOptions`].
 pub struct DiagnosticFormatter<'a, 'src, C: DiagnosticCode> {
   diagnostic: &'a Diagnostic<C>,
   cache: CacheRef<'a, 'src>,
@@ -108,10 +114,13 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
     }
   }
 
+  /// Construct from a pre-built [`SourceCache`]. Cheap; reuse the cache across
+  /// many diagnostics over the same source.
   pub fn with_cache(diagnostic: &'a Diagnostic<C>, cache: &'a SourceCache<'src>) -> Self {
     Self { diagnostic, cache: CacheRef::Borrowed(cache), options: RenderOptions::default() }
   }
 
+  /// Override [`RenderOptions`].
   pub fn with_options(mut self, options: RenderOptions) -> Self {
     self.options = options;
     self
