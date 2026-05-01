@@ -376,3 +376,58 @@ fn error_with_notes_and_help() {
 
   assert_eq!(engine.error_count(), 1);
 }
+
+#[test]
+fn compact_renders_header_and_location_without_source() {
+  let d = Diagnostic::new(TestCode::SyntaxError, "bad token")
+    .with_label(Label::primary(Span::new("a.rs", 7, 3, 5), Some("here".into())))
+    .with_note("see rule X")
+    .with_help("rename it");
+
+  let out = format_compact(&d, false);
+  assert!(out.contains("error[E0001]: bad token"));
+  assert!(out.contains("--> a.rs:7:3"));
+  assert!(out.contains("= primary: here"));
+  assert!(out.contains("= note: see rule X"));
+  assert!(out.contains("= help: rename it"));
+  assert!(!out.contains(" | "));
+}
+
+#[test]
+fn compact_groups_locations_by_file() {
+  let d = Diagnostic::new(TestCode::TypeMismatch, "cross-file mismatch")
+    .with_label(Label::primary(Span::new("a.rs", 1, 1, 1), None::<String>))
+    .with_label(Label::secondary(Span::new("b.rs", 5, 2, 1), None::<String>));
+
+  let out = format_compact(&d, false);
+  assert!(out.contains("--> a.rs:1:1"));
+  assert!(out.contains("--> b.rs:5:2"));
+}
+
+#[test]
+fn compact_engine_format_all_includes_summary() {
+  let mut engine = DiagnosticEngine::<TestCode>::new();
+  engine.emit(
+    Diagnostic::new(TestCode::SyntaxError, "boom")
+      .with_label(Label::primary(Span::new("a.rs", 1, 1, 1), None::<String>)),
+  );
+  engine.emit(
+    Diagnostic::new(TestCode::UnusedVar, "unused")
+      .with_label(Label::primary(Span::new("a.rs", 2, 1, 1), None::<String>)),
+  );
+
+  let out = engine.format_all_compact_plain();
+  assert!(out.contains("error[E0001]: boom"));
+  assert!(out.contains("warning[W0001]: unused"));
+  assert!(out.contains("could not compile due to 1 previous error"));
+  assert!(out.contains("1 warning emitted"));
+}
+
+#[test]
+fn compact_method_matches_free_fn() {
+  let d = Diagnostic::new(TestCode::SyntaxError, "x")
+    .with_label(Label::primary(Span::new("a.rs", 1, 1, 1), Some("y".into())));
+  let via_method = d.format_compact(false);
+  let via_fn = format_compact(&d, false);
+  assert_eq!(via_method, via_fn);
+}

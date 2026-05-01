@@ -4,17 +4,19 @@
 //!
 //! See `examples/` for end-to-end demos.
 
+mod compact;
 mod diagnostic;
 mod formatter;
 #[cfg(feature = "json")]
 mod json;
 mod macros;
-mod utils;
+mod style;
 
+pub use compact::format_compact;
 pub use diagnostic::*;
 pub use formatter::{DiagnosticFormatter, RenderOptions, SourceCache};
 
-use crate::utils::*;
+use crate::style::*;
 use colored::*;
 
 #[derive(Debug)]
@@ -134,60 +136,79 @@ impl<C: DiagnosticCode> DiagnosticEngine<C> {
     out
   }
 
+  /// Render every diagnostic in compact (source-less) form. Use when the
+  /// caller doesn't have the original source string — log shippers, batch
+  /// CI summaries, LSP tools that already display source themselves.
+  /// Falls back to colored output; pair with [`Self::format_all_compact_plain`]
+  /// for deterministic CI logs.
+  pub fn format_all_compact(&self) -> String {
+    self.format_all_compact_with(true)
+  }
+
+  /// Plain (no-color) variant of [`Self::format_all_compact`].
+  pub fn format_all_compact_plain(&self) -> String {
+    self.format_all_compact_with(false)
+  }
+
+  fn format_all_compact_with(&self, color: bool) -> String {
+    let mut out = String::new();
+    for d in &self.diagnostics {
+      out.push_str(&compact::format_compact(d, color));
+    }
+    if color {
+      out.push_str(&self.format_summary());
+    } else {
+      out.push_str(&self.format_summary_plain());
+    }
+    out
+  }
+
+  /// Print every diagnostic in compact (source-less) form to stdout, then
+  /// the summary line.
+  pub fn print_all_compact(&self) {
+    print!("{}", self.format_all_compact());
+    let summary = self.format_summary();
+    if !summary.is_empty() {
+      println!("\n{}", summary);
+    }
+  }
+
   fn format_summary(&self) -> String {
-    if self.error_count == 0 && self.warning_count == 0 && self.bug_count == 0 {
+    self.format_summary_with(true)
+  }
+
+  fn format_summary_plain(&self) -> String {
+    self.format_summary_with(false)
+  }
+
+  fn format_summary_with(&self, color: bool) -> String {
+    if self.error_count + self.warning_count + self.bug_count == 0 {
       return String::new();
     }
-    if self.has_errors() || self.bug_count > 0 {
-      let total_errors = self.error_count + self.bug_count;
+    let total_errors = self.error_count + self.bug_count;
+    if total_errors > 0 {
       let warn_part = if self.warning_count > 0 {
         format!(
           "; {} {} emitted",
-          self.warning_count.to_string().yellow().bold(),
-          pluralize("warning", self.warning_count)
+          paint(&self.warning_count.to_string(), color, |s| s.yellow().bold()),
+          plural("warning", self.warning_count),
         )
       } else {
         String::new()
       };
       format!(
         "{}: could not compile due to {} previous {}{}",
-        "error".red().bold(),
-        total_errors.to_string().red().bold(),
-        pluralize("error", total_errors),
-        warn_part
+        paint("error", color, |s| s.red().bold()),
+        paint(&total_errors.to_string(), color, |s| s.red().bold()),
+        plural("error", total_errors),
+        warn_part,
       )
     } else {
       format!(
         "{}: {} {} emitted",
-        "warning".yellow().bold(),
-        self.warning_count.to_string().yellow().bold(),
-        pluralize("warning", self.warning_count)
-      )
-    }
-  }
-
-  fn format_summary_plain(&self) -> String {
-    if self.error_count == 0 && self.warning_count == 0 && self.bug_count == 0 {
-      return String::new();
-    }
-    if self.has_errors() || self.bug_count > 0 {
-      let total_errors = self.error_count + self.bug_count;
-      let warn_part = if self.warning_count > 0 {
-        format!("; {} {} emitted", self.warning_count, pluralize("warning", self.warning_count))
-      } else {
-        String::new()
-      };
-      format!(
-        "error: could not compile due to {} previous {}{}",
-        total_errors,
-        pluralize("error", total_errors),
-        warn_part
-      )
-    } else {
-      format!(
-        "warning: {} {} emitted",
-        self.warning_count,
-        pluralize("warning", self.warning_count)
+        paint("warning", color, |s| s.yellow().bold()),
+        paint(&self.warning_count.to_string(), color, |s| s.yellow().bold()),
+        plural("warning", self.warning_count),
       )
     }
   }

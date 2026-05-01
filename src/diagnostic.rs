@@ -18,6 +18,20 @@ pub enum Severity {
   Help,
 }
 
+impl Severity {
+  /// Human-readable severity word used in rendered output (`error`,
+  /// `warning`, `note`, `help`, `internal error`).
+  pub fn label(self) -> &'static str {
+    match self {
+      Self::Bug => "internal error",
+      Self::Error => "error",
+      Self::Warning => "warning",
+      Self::Note => "note",
+      Self::Help => "help",
+    }
+  }
+}
+
 /// Implement this on your error enum to plug into the diagnostic system.
 ///
 /// ```rust
@@ -246,5 +260,10 @@ impl<C: DiagnosticCode> Diagnostic<C> {
   /// Primary label, if any (first label, or first `Primary`-styled label).
   pub fn primary_label(&self) -> Option<&Label> {
     self.labels.iter().find(|l| l.style == LabelStyle::Primary).or_else(|| self.labels.first())
+  }
+
+  /// Render in compact (source-less) form. See [`crate::format_compact`].
+  pub fn format_compact(&self, color: bool) -> String {
+    crate::compact::format_compact(self, color)
   }
 }

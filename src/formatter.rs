@@ -1,7 +1,8 @@
 use colored::*;
 use unicode_width::UnicodeWidthStr;
 
-use crate::diagnostic::{Diagnostic, DiagnosticCode, Label, LabelStyle, Severity, Suggestion};
+use crate::diagnostic::{Diagnostic, DiagnosticCode, Label, LabelStyle, Suggestion};
+use crate::style::{arrow, bar, code_word, eq_sep, meta_label, paint, paint_label, severity_word};
 
 /// Pre-split source cache. Build once per source string, reuse for many diagnostics.
 #[derive(Debug, Clone)]
@@ -116,16 +117,6 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
     self
   }
 
-  fn severity_text(&self) -> &'static str {
-    match self.diagnostic.severity {
-      Severity::Bug => "internal error",
-      Severity::Error => "error",
-      Severity::Warning => "warning",
-      Severity::Note => "note",
-      Severity::Help => "help",
-    }
-  }
-
   fn underline_char(style: LabelStyle) -> char {
     match style {
       LabelStyle::Primary => '^',
@@ -159,27 +150,15 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
   }
 
   fn write_header(&self, out: &mut String, color: bool) {
-    let sev = self.severity_text();
-    let code_str = self.diagnostic.code.code();
-    let url = self.diagnostic.code.url();
-
-    if color {
-      let (sev_c, code_c) = match self.diagnostic.severity {
-        Severity::Bug | Severity::Error => (sev.red().bold(), code_str.red().bold()),
-        Severity::Warning => (sev.yellow().bold(), code_str.yellow().bold()),
-        _ => (sev.cyan().bold(), code_str.cyan().bold()),
-      };
-      out.push_str(&format!("{}: [{}]: {}", sev_c, code_c, self.diagnostic.message));
-    } else {
-      out.push_str(&format!("{}: [{}]: {}", sev, code_str, self.diagnostic.message));
-    }
-
-    if let Some(u) = url {
-      if color {
-        out.push_str(&format!(" {}", format!("(see {u})").blue().italic()));
-      } else {
-        out.push_str(&format!(" (see {u})"));
-      }
+    let d = &self.diagnostic;
+    out.push_str(&format!(
+      "{}: [{}]: {}",
+      severity_word(d.severity, color),
+      code_word(d.severity, d.code.code(), color),
+      d.message,
+    ));
+    if let Some(u) = d.code.url() {
+      out.push_str(&format!(" {}", paint(&format!("(see {u})"), color, |s| s.blue().italic())));
     }
     out.push('\n');
   }
@@ -210,28 +189,17 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
         None => continue,
       };
 
-      // File header
-      let header_line = format!(
-        "  {} {}:{}:{}",
-        if color { "-->".blue().bold().to_string() } else { "-->".to_string() },
-        if color {
-          primary.span.file.clone().white().bold().to_string()
-        } else {
-          primary.span.file.clone().to_string()
-        },
-        if color {
-          primary.span.line.to_string().white().bold().to_string()
-        } else {
-          primary.span.line.to_string()
-        },
-        if color {
-          primary.span.column.to_string().white().bold().to_string()
-        } else {
-          primary.span.column.to_string()
-        },
-      );
-      out.push_str(&header_line);
-      out.push('\n');
+      let loc = if color {
+        format!(
+          "{}:{}:{}",
+          primary.span.file.clone().white().bold(),
+          primary.span.line.to_string().white().bold(),
+          primary.span.column.to_string().white().bold(),
+        )
+      } else {
+        format!("{}:{}:{}", primary.span.file, primary.span.line, primary.span.column)
+      };
+      out.push_str(&format!("  {} {}\n", arrow(color), loc));
 
       self.write_file_section(out, &in_file, color);
 
@@ -255,19 +223,17 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
     let end = (max_line + self.options.context_lines).min(self.cache.len());
 
     let gutter_w = end.to_string().len().max(2);
-    let bar = if color { "|".blue().bold().to_string() } else { "|".to_string() };
-
+    let bar_s = bar(color);
     let blank_gutter = " ".repeat(gutter_w);
-    out.push_str(&format!("  {} {}\n", blank_gutter, bar));
+    out.push_str(&format!("  {} {}\n", blank_gutter, bar_s));
 
     for line_num in start..=end {
       let raw = self.cache.line(line_num).unwrap_or("");
       let expanded = expand_tabs(raw, self.options.tab_width);
       let truncated = truncate_line(&expanded, self.options.max_line_width);
       let line_label = format!("{:>w$}", line_num, w = gutter_w);
-      let line_label_c =
-        if color { line_label.blue().bold().to_string() } else { line_label.clone() };
-      out.push_str(&format!("  {} {} {}\n", line_label_c, bar, truncated));
+      let line_label_c = paint(&line_label, color, |s| s.blue().bold());
+      out.push_str(&format!("  {} {} {}\n", line_label_c, bar_s, truncated));
 
       // collect labels touching this line, sorted by start column
       let mut on_line: Vec<&Label> =
@@ -279,7 +245,7 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
       self.write_caret_block(out, &on_line, line_num, raw, gutter_w, color);
     }
 
-    out.push_str(&format!("  {} {}\n", blank_gutter, bar));
+    out.push_str(&format!("  {} {}\n", blank_gutter, bar_s));
   }
 
   /// Render all labels on one source line as a stacked block.
@@ -319,7 +285,7 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
       .collect();
 
     let n = infos.len();
-    let bar = if color { "|".blue().bold().to_string() } else { "|".to_string() };
+    let bar_s = bar(color);
     let blank_gutter = " ".repeat(gutter_w);
 
     for k in 0..n {
@@ -335,54 +301,45 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
           cursor += 1;
         }
         let ch = Self::underline_char(lbl.style);
-        let underline: String = std::iter::repeat(ch).take(*len).collect();
-        let painted = if color {
-          color_for(self.diagnostic.severity, lbl.style, &underline)
-        } else {
-          underline
-        };
-        buf.push_str(&painted);
+        let underline: String = std::iter::repeat_n(ch, *len).collect();
+        buf.push_str(&paint_label(self.diagnostic.severity, lbl.style, &underline, color));
         cursor += *len;
       }
 
       // Append the message of `m` after the last caret with one space of gap.
       let m_label = visible.last().unwrap().2;
       let line = match &m_label.message {
-        Some(msg) => {
-          let painted_msg = if color {
-            color_for(self.diagnostic.severity, m_label.style, msg)
-          } else {
-            msg.clone()
-          };
-          format!("  {} {} {} {}\n", blank_gutter, bar, buf, painted_msg)
-        },
-        None => format!("  {} {} {}\n", blank_gutter, bar, buf),
+        Some(msg) => format!(
+          "  {} {} {} {}\n",
+          blank_gutter,
+          bar_s,
+          buf,
+          paint_label(self.diagnostic.severity, m_label.style, msg, color),
+        ),
+        None => format!("  {} {} {}\n", blank_gutter, bar_s, buf),
       };
       out.push_str(&line);
 
-      // Per-label inline note, rendered on its own row directly under this row.
       if let Some(note) = &m_label.note {
         let note_c = if color { note.cyan().italic().to_string() } else { format!("note: {note}") };
         out.push_str(&format!(
           "  {} {} {}↳ {}\n",
           blank_gutter,
-          bar,
+          bar_s,
           " ".repeat(infos[m].0),
-          note_c
+          note_c,
         ));
       }
     }
   }
 
   fn write_notes_help(&self, out: &mut String, color: bool) {
-    let eq = if color { "=".blue().bold().to_string() } else { "=".to_string() };
+    let eq = eq_sep(color);
     for note in &self.diagnostic.notes {
-      let label = if color { "note".cyan().bold().to_string() } else { "note".to_string() };
-      out.push_str(&format!("   {} {}: {}\n", eq, label, note));
+      out.push_str(&format!("   {} {}: {}\n", eq, meta_label("note", color), note));
     }
     if let Some(help) = &self.diagnostic.help {
-      let label = if color { "help".cyan().bold().to_string() } else { "help".to_string() };
-      out.push_str(&format!("   {} {}: {}\n", eq, label, help));
+      out.push_str(&format!("   {} {}: {}\n", eq, meta_label("help", color), help));
     }
   }
 
@@ -390,14 +347,11 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
     if self.diagnostic.suggestions.is_empty() {
       return;
     }
-    let eq = if color { "=".blue().bold().to_string() } else { "=".to_string() };
-    let label = if color { "help".cyan().bold().to_string() } else { "help".to_string() };
+    let eq = eq_sep(color);
+    let help = meta_label("help", color);
     for s in &self.diagnostic.suggestions {
-      let header = match &s.message {
-        Some(m) => m.to_string(),
-        None => "try this:".to_string(),
-      };
-      out.push_str(&format!("   {} {}: {}\n", eq, label, header));
+      let header = s.message.clone().unwrap_or_else(|| "try this:".to_string());
+      out.push_str(&format!("   {} {}: {}\n", eq, help, header));
       self.write_suggestion_diff(out, s, color);
       Self::write_applicability(out, s, color);
     }
@@ -411,10 +365,8 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
     let orig_line = match self.cache.line(line_num) {
       Some(l) => l,
       None => {
-        // No source — flat render.
         for line in s.replacement.lines() {
-          let body = if color { line.green().to_string() } else { line.to_string() };
-          out.push_str(&format!("       {}\n", body));
+          out.push_str(&format!("       {}\n", paint(line, color, |s| s.green())));
         }
         return;
       },
@@ -440,33 +392,34 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
       new_lines.push(format!("{}{}{}", head, r, tail));
     }
 
-    // Gutter width = max line number we'll print.
     let last_line = line_num + new_lines.len().saturating_sub(1);
     let gutter_w = last_line.to_string().len().max(2);
-    let bar = if color { "|".blue().bold().to_string() } else { "|".to_string() };
+    let bar_s = bar(color);
     let blank_gutter = " ".repeat(gutter_w);
+    let minus = paint("-", color, |s| s.red().bold());
+    let plus = paint("+", color, |s| s.green().bold());
 
-    out.push_str(&format!("  {} {}\n", blank_gutter, bar));
+    out.push_str(&format!("  {} {}\n", blank_gutter, bar_s));
 
-    // Old line (single, since spans on one line; multi-line removal not modelled).
-    let line_label = format!("{:>w$}", line_num, w = gutter_w);
-    let line_label_c =
-      if color { line_label.blue().bold().to_string() } else { line_label.clone() };
-    let minus = if color { "-".red().bold().to_string() } else { "-".to_string() };
-    let orig_body = if color { orig_line.red().to_string() } else { orig_line.to_string() };
-    out.push_str(&format!("  {} {} {}\n", line_label_c, minus, orig_body));
+    let lbl = format!("{:>w$}", line_num, w = gutter_w);
+    out.push_str(&format!(
+      "  {} {} {}\n",
+      paint(&lbl, color, |s| s.blue().bold()),
+      minus,
+      paint(orig_line, color, |s| s.red()),
+    ));
 
-    // New lines (one or many).
-    let plus = if color { "+".green().bold().to_string() } else { "+".to_string() };
     for (i, body) in new_lines.iter().enumerate() {
-      let n = line_num + i;
-      let lbl = format!("{:>w$}", n, w = gutter_w);
-      let lbl_c = if color { lbl.blue().bold().to_string() } else { lbl.clone() };
-      let body_c = if color { body.green().to_string() } else { body.to_string() };
-      out.push_str(&format!("  {} {} {}\n", lbl_c, plus, body_c));
+      let lbl = format!("{:>w$}", line_num + i, w = gutter_w);
+      out.push_str(&format!(
+        "  {} {} {}\n",
+        paint(&lbl, color, |s| s.blue().bold()),
+        plus,
+        paint(body, color, |s| s.green()),
+      ));
     }
 
-    out.push_str(&format!("  {} {}\n", blank_gutter, bar));
+    out.push_str(&format!("  {} {}\n", blank_gutter, bar_s));
   }
 
   fn write_applicability(out: &mut String, s: &Suggestion, color: bool) {
@@ -476,20 +429,11 @@ impl<'a, 'src, C: DiagnosticCode> DiagnosticFormatter<'a, 'src, C> {
       crate::diagnostic::Applicability::HasPlaceholders => "has placeholders",
       crate::diagnostic::Applicability::Unspecified => return,
     };
-    let body = if color { kind.dimmed().to_string() } else { kind.to_string() };
-    out.push_str(&format!("       ({})\n", body));
+    out.push_str(&format!("       ({})\n", paint(kind, color, |s| s.dimmed())));
   }
 }
 
 // ---------- helpers ----------
-
-fn color_for(sev: Severity, style: LabelStyle, s: &str) -> String {
-  match (sev, style) {
-    (Severity::Bug | Severity::Error, LabelStyle::Primary) => s.red().bold().to_string(),
-    (Severity::Warning, LabelStyle::Primary) => s.yellow().bold().to_string(),
-    _ => s.cyan().bold().to_string(),
-  }
-}
 
 fn label_touches(label: &Label, line: usize) -> bool {
   let start = label.span.line;
