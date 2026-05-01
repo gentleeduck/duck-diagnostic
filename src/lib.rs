@@ -10,11 +10,13 @@ mod formatter;
 #[cfg(feature = "json")]
 mod json;
 mod macros;
+mod smart;
 mod style;
 
 pub use compact::format_compact;
 pub use diagnostic::*;
 pub use formatter::{DiagnosticFormatter, RenderOptions, SourceCache};
+pub use smart::{format_all_smart, print_all_smart};
 
 use crate::style::*;
 use colored::*;
@@ -171,6 +173,13 @@ impl<C: DiagnosticCode> DiagnosticEngine<C> {
     if !summary.is_empty() {
       println!("\n{}", summary);
     }
+  }
+
+  /// Render the trailing summary line ("error: could not compile due to N
+  /// previous errors; M warnings emitted"). `color` toggles ANSI styling.
+  /// Returns the empty string when the engine has no errors / warnings.
+  pub fn summary(&self, color: bool) -> String {
+    self.format_summary_with(color)
   }
 
   fn format_summary(&self) -> String {

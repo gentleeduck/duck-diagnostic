@@ -431,3 +431,41 @@ fn compact_method_matches_free_fn() {
   let via_fn = format_compact(&d, false);
   assert_eq!(via_method, via_fn);
 }
+
+
+#[test]
+fn smart_renders_compact_when_file_missing() {
+  let mut engine = DiagnosticEngine::<TestCode>::new();
+  engine.emit(
+    Diagnostic::new(TestCode::SyntaxError, "boom")
+      .with_label(Label::primary(Span::new("/path/that/does/not/exist.rs", 5, 3, 1), None::<String>)),
+  );
+  let out = format_all_smart(&engine, false);
+  assert!(out.contains("error[E0001]: boom"));
+  assert!(out.contains("--> /path/that/does/not/exist.rs:5:3"));
+  assert!(!out.contains(" | "));
+}
+
+#[test]
+fn smart_falls_back_compact_for_synthetic_span() {
+  let mut engine = DiagnosticEngine::<TestCode>::new();
+  engine.emit(
+    Diagnostic::new(TestCode::SyntaxError, "config issue")
+      .with_label(Label::primary(Span::synthetic("<config>"), None::<String>)),
+  );
+  let out = format_all_smart(&engine, false);
+  assert!(out.contains("error[E0001]: config issue"));
+  assert!(!out.contains(" | "));
+}
+
+#[test]
+fn smart_includes_summary() {
+  let mut engine = DiagnosticEngine::<TestCode>::new();
+  engine.emit(
+    Diagnostic::new(TestCode::SyntaxError, "bad")
+      .with_label(Label::primary(Span::synthetic("x"), None::<String>)),
+  );
+  let out = format_all_smart(&engine, false);
+  assert!(out.contains("could not compile due to 1 previous error"));
+}
+
