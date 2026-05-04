@@ -1,21 +1,32 @@
-## Description
-Clearly describe the changes introduced by this PR.
+<!-- Thanks for the PR. Fill in the sections that apply, drop the rest. -->
 
-## Related Issue(s)
-Fixes #...
+## Summary
 
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Breaking change
-- [ ] Chore / maintenance
-- [ ] Documentation
+<!-- one or two sentences -->
 
-## How Has This Been Tested?
-- [ ] Unit tests
-- [ ] Manual testing
+## Type of change
+
+- [ ] fix
+- [ ] feat
+- [ ] docs
+- [ ] perf
+- [ ] refactor
+- [ ] test
+- [ ] chore
+
+## Scope
+
+<!-- which crate(s) / pkg(s) this touches -->
 
 ## Checklist
-- [ ] Code follows the gentleduck/diagnostic coding guidelines
-- [ ] Tests added/updated where applicable
-- [ ] Documentation updated where applicable
+
+- [ ] `cargo test --workspace --features pretty-code` passes
+- [ ] `cargo clippy --workspace --all-features -- -D warnings` clean
+- [ ] Docs updated (per-crate + cheatsheet if API changes)
+- [ ] No special chars in prose (em-dash, curly quotes, ellipsis)
+- [ ] Bench numbers added under `duck-benchmarks/` if perf-relevant
+- [ ] Cache key bumped if compile output shape changed
+
+## Notes
+
+<!-- migration notes, breaking changes, follow-ups -->

@@ -10,7 +10,11 @@ pub(crate) fn paint<F>(s: &str, color: bool, style_fn: F) -> String
 where
   F: FnOnce(&str) -> ColoredString,
 {
-  if color { style_fn(s).to_string() } else { s.to_string() }
+  if color {
+    style_fn(s).to_string()
+  } else {
+    s.to_string()
+  }
 }
 
 /// Color a string by severity + label style. Defaults to cyan-bold for

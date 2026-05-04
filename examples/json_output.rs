@@ -1,6 +1,6 @@
 //! Run with `cargo run --example json_output`. Pipes a JSON array on stdout.
 
-use duck_diagnostic::*;
+use duck_diag::*;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, Serialize)]

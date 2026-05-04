@@ -1,122 +1,88 @@
-# Contributing to gentleduck/diagnostic
+# Contributing to dmc
 
-Thank you for considering contributing to **gentleduck/diagnostic**.
-We welcome all kinds of contributions - bug reports, documentation improvements, feature requests, and code.
+Thanks for the interest. This file covers the workflow + style. For
+deeper architecture or per-crate guidance see
+[`dmc-docs/guides/contributing.md`](dmc-docs/guides/contributing.md).
 
----
+## Repo layout
 
-## Code of Conduct
-
-By participating in this project, you agree to uphold our [Code of Conduct](./CODE_OF_CONDUCT.md).
-Please treat everyone with respect and kindness.
-
----
-
-## Getting Started
-
-### 1. Fork & Clone
-
-```bash
-git clone https://github.com/gentleduck/duck-diagnostic.git
-cd duck-diagnostic
+```
+duck-mc/
+|- dmc-lexer/       crate
+|- dmc-parser/      crate
+|- dmc-highlight/   crate (leaf, syntect bundle)
+|- dmc-transform/   crate
+|- dmc-codegen/     crate
+|- dmc-diagnostic/  crate
+|- dmc-schema/      crate
+|- dmc-core/        crate (engine + CLI)
+|- dmc-napi/        crate (cdylib + TS wrapper, @gentleduck/md)
+|- dmc-sidecar/     pure JS (Node helper)
+|- dmc-docs/        per-crate + architecture docs
+|- duck-benchmarks/ recorded bench runs per phase
+|- examples/        nextjs, nextjs-velite, acme-docs, web
+`- docs/            architecture + benchmark write-ups
 ```
 
-### 2. Build
+## Build
 
-```bash
-cargo build
+```sh
+pnpm install
+cargo build --release -p dmc-core --features pretty-code
+cargo test  --workspace --features pretty-code
+pnpm --filter @gentleduck/md run build   # napi binary
 ```
 
-### 3. Run Tests
+## Pre-commit
 
-```bash
-cargo test
+Husky runs `cargo fmt apply` automatically. Before pushing:
+
+```sh
+cargo fmt
+cargo clippy --workspace --all-features -- -D warnings
+cargo test  --workspace --features pretty-code
 ```
 
-### 4. Run Examples
+## Style
 
-```bash
-cargo run --example demo
-```
+- ASCII-only in source + prose. Use `-`, `'`, `"`, `...`, `->`, `<-`,
+  `>=`, `<=`, `!=`, `*`, `.`. No em-dashes, curly quotes, ellipsis,
+  arrows, comparison glyphs in unicode form.
+- Caveman-mode terse comments. No filler. Comments explain WHY, not
+  WHAT.
+- Conventional commit subjects: `kind(scope): subject`. Examples:
+  `fix(parser): support lists nested inside blockquotes`,
+  `feat(highlight): bundled syntect grammars`.
 
----
+## Tests
 
-## Development Workflow
+Per-crate `tests/*.rs` for integration; `#[cfg(test)] mod tests` for
+unit. Snapshot tests via `insta` in `dmc-core` cover compile output
+fixtures.
 
-1. **Branching**
+## Adding a transformer / theme / grammar / diagnostic code
 
-   * Create a new branch from `master`.
-   * Use a descriptive name, e.g. `fix/underline-offset`, `feat/multi-line-spans`, `docs/readme-update`.
+See [`dmc-docs/guides/contributing.md`](dmc-docs/guides/contributing.md)
+for the per-extension checklist (file paths, feature gates, doc
+locations).
 
-   ```bash
-   git checkout -b feat/my-feature
-   ```
+## PR checklist
 
-2. **Coding Standards**
+- [ ] Tests pass: `cargo test --workspace --features pretty-code`
+- [ ] Clippy clean: `cargo clippy --workspace --all-features -- -D warnings`
+- [ ] Docs updated (per-crate + cheatsheet if API changes)
+- [ ] No special chars in prose (em-dash, curly quotes, etc)
+- [ ] Bench numbers if perf-relevant change
+  (see [`duck-benchmarks/`](duck-benchmarks/))
+- [ ] Cache key updated if compile output shape changes
 
-   * Run `cargo fmt` before committing.
-   * Run `cargo clippy` and fix any warnings.
-   * Write clear, self-documenting code.
+## Reporting bugs / requesting features
 
-3. **Commit Messages**
-
-   Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-   ```
-   feat: add multi-line span support
-   fix: correct underline alignment in plain text mode
-   docs: update api reference in readme
-   ```
-
-4. **Testing**
-
-   * Write tests for new functionality.
-   * Run all tests before pushing:
-
-     ```bash
-     cargo test
-     ```
-
----
-
-## Submitting a Pull Request
-
-1. Push your branch:
-
-   ```bash
-   git push origin feat/my-feature
-   ```
-
-2. Open a Pull Request against the `master` branch.
-
-3. Fill out the PR template with:
-
-   * A clear description of your changes
-   * Any related issues (`Closes #123`)
-   * How you tested it
-
----
-
-## Reporting Issues
-
-If you find a bug, please [open an issue](https://github.com/gentleduck/duck-diagnostic/issues) with:
-
-* Steps to reproduce
-* Expected behavior
-* Actual behavior
-* Rust version (`rustc --version`)
-
----
-
-## Ways to Contribute
-
-* **Code**: Bug fixes, features, optimizations
-* **Docs**: README improvements, examples, guides
-* **Testing**: More test coverage, edge cases
-* **Community**: Helping others in discussions
-
----
+Open an issue at
+[github.com/gentleeduck/duck-mc/issues](https://github.com/gentleeduck/duck-mc/issues).
+For security issues, see [`SECURITY.md`](SECURITY.md).
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the project's [MIT License](./LICENSE).
+Contributions are licensed under MIT (see [`LICENSE`](LICENSE)) by
+default.

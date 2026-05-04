@@ -1,7 +1,7 @@
 /// Shorthand for `Diagnostic::new(...)` with optional label/note/help/suggestion.
 ///
 /// ```rust
-/// use duck_diagnostic::*;
+/// use duck_diag::*;
 ///
 /// #[derive(Debug, Clone, Copy)]
 /// enum E { Foo }

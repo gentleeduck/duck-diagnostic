@@ -52,8 +52,7 @@ fn format_one_smart<C: DiagnosticCode>(
     return d.format_compact(color);
   }
   let file = label.span.file.clone();
-  let entry =
-    cache.entry(file.clone()).or_insert_with(|| std::fs::read_to_string(&*file).ok());
+  let entry = cache.entry(file.clone()).or_insert_with(|| std::fs::read_to_string(&*file).ok());
   match entry {
     Some(src) => {
       let opts = RenderOptions { color, ..Default::default() };

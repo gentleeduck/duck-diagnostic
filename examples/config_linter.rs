@@ -1,6 +1,6 @@
-//! Example: using duck-diagnostic for a config file linter (YAML/TOML/JSON).
+//! Example: using duck-diag for a config file linter (YAML/TOML/JSON).
 
-use duck_diagnostic::*;
+use duck_diag::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ConfigError {

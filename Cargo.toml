@@ -1,13 +1,13 @@
 [package]
-name = "duck-diagnostic"
-version = "0.7.1"
+name = "duck-diag"
+version = "0.8.0"
 edition = "2021"
 authors = ["gentleduck"]
 description = "Generic diagnostic engine for building rich error reporting into any tool"
 license = "MIT"
-repository = "https://github.com/gentleduck/duck-diagnostic"
-homepage = "https://github.com/gentleduck/duck-diagnostic"
-documentation = "https://docs.rs/duck-diagnostic"
+repository = "https://github.com/gentleeduck/duck-diag"
+homepage = "https://github.com/gentleeduck/duck-diag"
+documentation = "https://docs.rs/duck-diag"
 keywords = ["diagnostic", "compiler", "error-reporting", "linter"]
 categories = ["development-tools", "compilers"]
 readme = "README.md"
@@ -15,6 +15,11 @@ readme = "README.md"
 [features]
 default = ["json"]
 json = ["serde", "serde_json"]
+
+# Examples carry illustrative enum variants that aren't all wired into
+# the demo flow; allow dead_code so they keep working as docs.
+[lints.rust]
+dead_code = "allow"
 
 [dependencies]
 colored = "3"

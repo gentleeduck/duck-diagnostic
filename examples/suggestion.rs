@@ -1,4 +1,4 @@
-use duck_diagnostic::*;
+use duck_diag::*;
 
 #[derive(Debug, Clone, Copy)]
 enum Lint {

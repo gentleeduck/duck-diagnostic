@@ -8,7 +8,7 @@
 //!   3. Insertion (length-0 span: add missing semicolon)
 //!   4. Each `Applicability` level
 
-use duck_diagnostic::*;
+use duck_diag::*;
 
 #[derive(Debug, Clone, Copy)]
 enum Lint {

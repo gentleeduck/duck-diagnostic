@@ -1,6 +1,6 @@
-//! Example: using duck-diagnostic for REST API request/response validation.
+//! Example: using duck-diag for REST API request/response validation.
 
-use duck_diagnostic::*;
+use duck_diag::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ApiError {

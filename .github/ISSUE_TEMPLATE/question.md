@@ -19,4 +19,4 @@ What are you trying to achieve and what have you tried so far?
 
 ## Environment (if relevant)
 - **Rust:** [e.g. 1.82.0]
-- **duck-diagnostic:** [e.g. 0.1.0]
+- **duck-diag:** [e.g. 0.1.0]

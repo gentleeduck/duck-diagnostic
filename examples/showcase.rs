@@ -6,7 +6,7 @@
 //! flavor against a single source file, plus a multi-file cross-reference
 //! at the end. Useful for screenshots / docs.
 
-use duck_diagnostic::*;
+use duck_diag::*;
 
 #[derive(Debug, Clone, Copy)]
 enum TinyC {

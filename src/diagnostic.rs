@@ -40,7 +40,7 @@ impl Severity {
 /// Implement this on your error enum to plug into the diagnostic system.
 ///
 /// ```rust
-/// use duck_diagnostic::{DiagnosticCode, Severity};
+/// use duck_diag::{DiagnosticCode, Severity};
 ///
 /// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// enum MyError {
@@ -113,7 +113,7 @@ impl Span {
   /// internally, so this just adds 1 to each.
   ///
   /// ```
-  /// use duck_diagnostic::Span;
+  /// use duck_diag::Span;
   /// let s = Span::from_zero_based("foo.rs", 0, 0, 1);
   /// assert_eq!(s.line, 1);
   /// assert_eq!(s.column, 1);

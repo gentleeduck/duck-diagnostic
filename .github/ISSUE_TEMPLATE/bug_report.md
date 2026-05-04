@@ -21,7 +21,7 @@ A clear description of the bug.
 ## Environment
 - **OS:** [e.g. Ubuntu 22.04, macOS Sequoia]
 - **Rust:** [e.g. 1.82.0]
-- **duck-diagnostic:** [e.g. 0.1.0]
+- **duck-diag:** [e.g. 0.1.0]
 
 ## Reproduction
 Minimal code snippet or repo that reproduces the bug.
