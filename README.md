@@ -11,9 +11,10 @@
 
 <p align="center">
   <a href="./LICENSE">MIT</a> -
+  <a href="./CHANGELOG.md">Changelog</a> -
+  <a href="./CONTRIBUTING.md">Contributing</a> -
   <a href="https://crates.io/crates/duck-diag">crates.io</a> -
-  <a href="https://docs.rs/duck-diag">docs.rs</a> -
-  <a href="https://github.com/gentleeduck/duck-diag/issues">issues</a>
+  <a href="https://docs.rs/duck-diag">docs.rs</a>
 </p>
 
 <p align="center">
@@ -53,9 +54,9 @@ d.print();      // pretty terminal output
 let json = d.to_json();   // stable JSON shape (with `json` feature)
 ```
 
-## Module matrix
+## Modules
 
-| path | role |
+| Path | Role |
 | --- | --- |
 | `src/diagnostic.rs` | `Diagnostic`, `Label`, `Span`, `Severity`, `Suggestion`, `Applicability` |
 | `src/formatter.rs` | terminal formatter with caret rendering, color, tab/Unicode-width handling |
@@ -65,13 +66,17 @@ let json = d.to_json();   // stable JSON shape (with `json` feature)
 | `src/style.rs` | `RenderOptions`, color toggles, line width clamps |
 | `src/macros.rs` | `diag!` macro |
 
-## Why a generic engine
+## Examples
 
-Most Rust tools (compilers, linters, schema validators, SQL parsers)
-want the same diagnostic shape: severity + message + labels + spans +
-hints. `duck-diag` gives you that surface without pulling in
-miette, ariadne, or syn. Useful when you want a tiny dep that
-ships color + caret rendering without the rest of the world.
+Runnable demos under [`examples/`](examples). Each one targets a
+different domain (compiler, SQL, REST, config linter).
+
+```sh
+cargo run --example demo
+cargo run --example sql_engine
+```
+
+See [`examples/README.md`](examples/README.md) for the full catalog.
 
 ## Build
 
@@ -80,9 +85,15 @@ cargo build --release
 cargo test  --workspace
 ```
 
+## Docs
+
+- [crates.io](https://crates.io/crates/duck-diag) -
+  [docs.rs](https://docs.rs/duck-diag) -
+  [duck-ui website](https://github.com/gentleeduck/duck-ui)
+
 ## Used by
 
-| crate | how |
+| Crate | How |
 | --- | --- |
 | [`@gentleduck/md` (dmc)](https://github.com/gentleeduck/duck-mc) | every layer's diagnostic engine |
 | your tool here | open a PR against this README |
@@ -90,8 +101,7 @@ cargo test  --workspace
 ## Contributing
 
 PR checklist + style notes in [`CONTRIBUTING.md`](CONTRIBUTING.md).
-Security: [`SECURITY.md`](SECURITY.md).
-Behaviour: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+Security: [`SECURITY.md`](SECURITY.md). Behaviour: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
 ## License
 
